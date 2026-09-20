@@ -1,12 +1,12 @@
 [package]
-name = "lattice-server"
+name = "twokitties-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
 argon2 = "0.5"
-lattice-protocol = { path = "../protocol" }
+twokitties-protocol = { path = "../protocol" }
 rand_core = { version = "0.6", features = ["getrandom"] }
 rustls = "0.23"
 rustls-pemfile = "2"
@@ -19,5 +19,5 @@ rcgen = "0.13"
 path = "src/lib.rs"
 
 [[bin]]
-name = "lattice-server"
+name = "twokitties-server"
 path = "src/main.rs"

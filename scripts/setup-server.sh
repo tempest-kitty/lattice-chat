@@ -9,10 +9,10 @@ Options:
   --yes                    Confirm filesystem changes.
   --force                 Replace files in the selected isolated paths.
   --no-systemd            Generate the unit but do not install/start it.
-  --server-binary PATH    Existing lattice-server binary to install.
-  --install-dir PATH      Binary directory (default: /opt/lattice-chat).
-  --data-dir PATH         Database/TLS directory (default: /var/lib/lattice-chat).
-  --config-dir PATH       Configuration directory (default: /etc/lattice-chat).
+  --server-binary PATH    Existing twokitties-server binary to install.
+  --install-dir PATH      Binary directory (default: /opt/twokitties).
+  --data-dir PATH         Database/TLS directory (default: /var/lib/twokitties).
+  --config-dir PATH       Configuration directory (default: /etc/twokitties).
   --listen-addr ADDRESS   Listen address written to config (default: 0.0.0.0:9443).
   --help                  Show this help.
 EOF
@@ -22,9 +22,9 @@ YES=0
 FORCE=0
 NO_SYSTEMD=0
 SERVER_BINARY=""
-INSTALL_DIR=/opt/lattice-chat
-DATA_DIR=/var/lib/lattice-chat
-CONFIG_DIR=/etc/lattice-chat
+INSTALL_DIR=/opt/twokitties
+DATA_DIR=/var/lib/twokitties
+CONFIG_DIR=/etc/twokitties
 LISTEN_ADDR=0.0.0.0:9443
 
 while (($#)); do
@@ -49,7 +49,7 @@ fi
 
 if [[ -z "$SERVER_BINARY" ]]; then
   script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
-  SERVER_BINARY="$script_dir/../target/release/lattice-server"
+  SERVER_BINARY="$script_dir/../target/release/twokitties-server"
 fi
 
 for required in "$SERVER_BINARY"; do
@@ -57,7 +57,7 @@ for required in "$SERVER_BINARY"; do
 done
 
 if ((FORCE == 0)) && {
-  [[ -e "$INSTALL_DIR/lattice-server" ]] || [[ -e "$CONFIG_DIR/server.env" ]] || [[ -e "$DATA_DIR/lattice-chat.db" ]];
+  [[ -e "$INSTALL_DIR/twokitties-server" ]] || [[ -e "$CONFIG_DIR/server.env" ]] || [[ -e "$DATA_DIR/twokitties.db" ]];
 }; then
   echo 'An installation already exists in the selected paths; use --force with explicit paths to replace it.' >&2
   exit 1
@@ -67,14 +67,14 @@ command -v openssl >/dev/null || { echo 'openssl is required to generate local T
 command -v python3 >/dev/null || { echo 'python3 is required to initialize SQLite.' >&2; exit 1; }
 
 mkdir -p -- "$INSTALL_DIR" "$DATA_DIR/tls" "$CONFIG_DIR"
-install -m 0755 -- "$SERVER_BINARY" "$INSTALL_DIR/lattice-server"
+install -m 0755 -- "$SERVER_BINARY" "$INSTALL_DIR/twokitties-server"
 
-DB_PATH="$DATA_DIR/lattice-chat.db"
+DB_PATH="$DATA_DIR/twokitties.db"
 TLS_CERT="$DATA_DIR/tls/server.crt"
 TLS_KEY="$DATA_DIR/tls/server.key"
 if [[ ! -e "$TLS_CERT" || ! -e "$TLS_KEY" || $FORCE == 1 ]]; then
   openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
-    -subj '/CN=lattice-chat-self-hosted' \
+    -subj '/CN=twokitties-self-hosted' \
     -keyout "$TLS_KEY" -out "$TLS_CERT" >/dev/null 2>&1
   chmod 600 -- "$TLS_KEY"
   chmod 644 -- "$TLS_CERT"
@@ -107,18 +107,18 @@ TLS_KEY_PATH=$TLS_KEY
 EOF
 chmod 600 -- "$CONFIG_DIR/server.env"
 
-cat > "$CONFIG_DIR/lattice-chat.service" <<EOF
+cat > "$CONFIG_DIR/twokitties.service" <<EOF
 [Unit]
-Description=Lattice Chat server
+Description=TwoKitties server
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=lattice-chat
-Group=lattice-chat
+User=twokitties
+Group=twokitties
 EnvironmentFile=$CONFIG_DIR/server.env
-ExecStart=$INSTALL_DIR/lattice-server
+ExecStart=$INSTALL_DIR/twokitties-server
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
@@ -129,23 +129,23 @@ ReadWritePaths=$DATA_DIR
 [Install]
 WantedBy=multi-user.target
 EOF
-chmod 644 -- "$CONFIG_DIR/lattice-chat.service"
+chmod 644 -- "$CONFIG_DIR/twokitties.service"
 
 if [[ $(id -u) -eq 0 ]] && command -v useradd >/dev/null; then
-  if ! id lattice-chat >/dev/null 2>&1; then
-    useradd --system --home-dir "$DATA_DIR" --shell /usr/sbin/nologin lattice-chat
+  if ! id twokitties >/dev/null 2>&1; then
+    useradd --system --home-dir "$DATA_DIR" --shell /usr/sbin/nologin twokitties
   fi
-  chown -R lattice-chat:lattice-chat -- "$DATA_DIR"
-  chown root:lattice-chat -- "$CONFIG_DIR" "$CONFIG_DIR/server.env" "$CONFIG_DIR/lattice-chat.service"
+  chown -R twokitties:twokitties -- "$DATA_DIR"
+  chown root:twokitties -- "$CONFIG_DIR" "$CONFIG_DIR/server.env" "$CONFIG_DIR/twokitties.service"
   chmod 750 -- "$CONFIG_DIR"
 fi
 
 if ((NO_SYSTEMD == 0)); then
   if [[ $(id -u) -eq 0 ]] && command -v systemctl >/dev/null; then
-    install -m 0644 -- "$CONFIG_DIR/lattice-chat.service" /etc/systemd/system/lattice-chat.service
+    install -m 0644 -- "$CONFIG_DIR/twokitties.service" /etc/systemd/system/twokitties.service
     systemctl daemon-reload
-    systemctl enable lattice-chat.service
-    echo 'Generated and enabled systemd service. Start it with: systemctl start lattice-chat'
+    systemctl enable twokitties.service
+    echo 'Generated and enabled systemd service. Start it with: systemctl start twokitties'
   else
     echo 'Generated systemd unit; root/systemctl were unavailable, so it was not installed.'
   fi
@@ -153,7 +153,7 @@ else
   echo 'Generated systemd unit without installing or starting it (--no-systemd).'
 fi
 
-echo "Installed binary: $INSTALL_DIR/lattice-server"
+echo "Installed binary: $INSTALL_DIR/twokitties-server"
 echo "Configuration: $CONFIG_DIR/server.env"
 echo "Database: $DB_PATH"
 echo "TLS certificate: $TLS_CERT"

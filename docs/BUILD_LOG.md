@@ -1,11 +1,11 @@
-# Lattice Chat build log
+# TwoKitties build log
 
 ## 2026-09-20
 
 ### Verified
 
-- Created Rust workspace at `/home/tempest/Projects/lattice-chat/`.
-- Added `lattice-protocol`, `lattice-server`, and `lattice-client` crates.
+- Created Rust workspace at `/home/tempest/Projects/twokitties/`.
+- Added `twokitties-protocol`, `twokitties-server`, and `twokitties-client` crates.
 - Added initial server-side signup validation domain slice.
 - Followed RED-GREEN cycle: signup test initially failed because the domain types were absent; implementation was then added.
 - `cargo fmt --all` completed.
@@ -29,8 +29,8 @@
 - Wired the server binary to generated environment configuration and TLS/SQLite paths.
 - Added release-binary deployment smoke test covering startup and TLS protocol negotiation.
 - Full workspace verification passed: 20 Rust tests plus setup-script, deployment-smoke, and doc/empty-crate checks.
-- Compiled outputs remain under `/home/tempest/Projects/lattice-chat/target/`.
-- Created public GitHub repository: `https://github.com/tempest-kitty/lattice-chat`.
+- Compiled outputs remain under `/home/tempest/Projects/twokitties/target/`.
+- Created public GitHub repository: `https://github.com/tempest-kitty/twokitties`.
 - Configured `origin`, committed the foundation as `a359d46c4727`, pushed `main`, and verified the remote `main` commit through GitHub's API.
 
 - Configured persistent GitHub authentication through `/home/tempest/.local/bin/git-credential-github-secret`, backed by the Linux Secret Service keyring.

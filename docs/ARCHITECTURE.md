@@ -1,12 +1,14 @@
-# Lattice Chat architecture
+# TwoKitties architecture
+
+Produced by Kitty Dynamics.
 
 ## Components
 
-`lattice-client` is the user-facing Linux/Windows application. It owns presentation, local session state, device keys, encrypted local cache, and media UX.
+`twokitties-client` is the user-facing Linux/Windows application. It owns presentation, local session state, device keys, encrypted local cache, and media UX.
 
-`lattice-server` is the Linux service. It owns account records, authorization, channels, encrypted message envelopes, history persistence, media metadata/object access, and federation connections.
+`twokitties-server` is the Linux service. It owns account records, authorization, channels, encrypted message envelopes, history persistence, media metadata/object access, and federation connections.
 
-`lattice-protocol` is the shared versioned contract. It must contain serializable wire types and capability/version negotiation, not UI or database code.
+`twokitties-protocol` is the shared versioned contract. It must contain serializable wire types and capability/version negotiation, not UI or database code.
 
 ## Security model
 

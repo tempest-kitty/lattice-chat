@@ -11,7 +11,7 @@ cleanup() {
 trap cleanup EXIT
 
 bash "$project_root/scripts/setup-server.sh" --yes --no-systemd \
-  --server-binary "$project_root/target/release/lattice-server" \
+  --server-binary "$project_root/target/release/twokitties-server" \
   --install-dir "$test_root/install" \
   --data-dir "$test_root/data" \
   --config-dir "$test_root/config" \
@@ -20,7 +20,7 @@ bash "$project_root/scripts/setup-server.sh" --yes --no-systemd \
 set -a
 . "$test_root/config/server.env"
 set +a
-"$test_root/install/lattice-server" >"$test_root/server.log" 2>&1 &
+"$test_root/install/twokitties-server" >"$test_root/server.log" 2>&1 &
 server_pid=$!
 
 python3 - "$test_root/data/tls/server.crt" <<'PY'
@@ -34,7 +34,7 @@ context.check_hostname = False
 for _ in range(50):
     try:
         with socket.create_connection(("127.0.0.1", 19443), timeout=1) as raw:
-            with context.wrap_socket(raw, server_hostname="lattice-chat-self-hosted") as client:
+            with context.wrap_socket(raw, server_hostname="twokitties-self-hosted") as client:
                 client.sendall(b"HELLO 1\n")
                 response = b""
                 while not response.endswith(b"\n"):

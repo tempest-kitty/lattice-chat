@@ -1,6 +1,5 @@
 use argon2::Argon2;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
-use lattice_protocol::{ClientHello, HandshakeError, negotiate};
 use rand_core::{OsRng, RngCore};
 use rusqlite::{Connection, OptionalExtension};
 use rustls::{
@@ -11,6 +10,7 @@ use rustls_pemfile::{certs, private_key};
 use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
+use twokitties_protocol::{ClientHello, HandshakeError, negotiate};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Account {
@@ -390,10 +390,10 @@ pub fn handle_handshake<S: Read + Write>(stream: &mut S) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lattice_protocol::PROTOCOL_VERSION;
     use std::io::{BufRead, BufReader, Write};
     use std::net::{TcpListener, TcpStream};
     use std::thread;
+    use twokitties_protocol::PROTOCOL_VERSION;
 
     #[test]
     fn signup_accepts_valid_account_details() {
@@ -514,7 +514,7 @@ mod tests {
     }
 
     fn test_database_path(label: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("lattice-chat-{label}-{}.db", std::process::id()))
+        std::env::temp_dir().join(format!("twokitties-{label}-{}.db", std::process::id()))
     }
 
     fn remove_test_database(path: &std::path::Path) {

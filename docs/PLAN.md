@@ -1,8 +1,8 @@
-# Lattice Chat plan
+# TwoKitties plan
 
 ## Confirmed scope
 
-- New project root: `/home/tempest/Projects/lattice-chat/`.
+- New project root: `/home/tempest/Projects/twokitties/`.
 - Client targets Linux and Windows.
 - Server target Linux.
 - Servers can federate into a network.

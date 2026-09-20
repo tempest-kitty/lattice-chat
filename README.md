@@ -1,10 +1,12 @@
-# Lattice Chat
+# TwoKitties
+
+Produced by Kitty Dynamics.
 
 A cross-platform chat system planned as:
 
-- `lattice-client`: Linux and Windows desktop client.
-- `lattice-server`: Linux-hosted server for accounts, communities, message history, media, and federation.
-- `lattice-protocol`: versioned shared protocol/domain types.
+- `twokitties-client`: Linux and Windows desktop client.
+- `twokitties-server`: Linux-hosted server for accounts, communities, message history, media, and federation.
+- `twokitties-protocol`: versioned shared protocol/domain types.
 
 Status: self-hosting setup milestone complete. The Linux server binary reads generated configuration, serves TLS, initializes SQLite, and can be installed with the tested setup script and systemd unit. Trusted certificate automation, persistent sessions, and public service hardening remain.
 
@@ -22,7 +24,7 @@ Build outputs, including compiled binaries, stay under this project's `target/` 
 
 ## Self-hosting
 
-The tested Linux setup path is documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Run `cargo build --release -p lattice-server`, then use `scripts/setup-server.sh --yes` to install the binary, initialize SQLite, generate initial TLS material, and create a systemd unit. The generated self-signed certificate is for initial testing only.
+The tested Linux setup path is documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Run `cargo build --release -p twokitties-server`, then use `scripts/setup-server.sh --yes` to install the binary, initialize SQLite, generate initial TLS material, and create a systemd unit. The generated self-signed certificate is for initial testing only.
 
 ## Planned milestones
 

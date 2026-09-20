@@ -6,7 +6,7 @@ setup_script="$project_root/scripts/setup-server.sh"
 test_root=$(mktemp -d)
 trap 'rm -rf -- "$test_root"' EXIT
 
-fake_binary="$test_root/lattice-server"
+fake_binary="$test_root/twokitties-server"
 printf '#!/bin/sh\nexit 0\n' > "$fake_binary"
 chmod 700 "$fake_binary"
 
@@ -19,16 +19,16 @@ bash "$setup_script" \
   --config-dir "$test_root/config" \
   --listen-addr '127.0.0.1:9443'
 
-test -x "$test_root/install/lattice-server"
+test -x "$test_root/install/twokitties-server"
 test -f "$test_root/config/server.env"
-test -f "$test_root/config/lattice-chat.service"
-test -f "$test_root/data/lattice-chat.db"
+test -f "$test_root/config/twokitties.service"
+test -f "$test_root/data/twokitties.db"
 test -f "$test_root/data/tls/server.crt"
 test -f "$test_root/data/tls/server.key"
 grep -F 'LISTEN_ADDR=127.0.0.1:9443' "$test_root/config/server.env" >/dev/null
-grep -F "ExecStart=$test_root/install/lattice-server" "$test_root/config/lattice-chat.service" >/dev/null
+grep -F "ExecStart=$test_root/install/twokitties-server" "$test_root/config/twokitties.service" >/dev/null
 
-python3 - "$test_root/data/lattice-chat.db" <<'PY'
+python3 - "$test_root/data/twokitties.db" <<'PY'
 import sqlite3
 import sys
 connection = sqlite3.connect(sys.argv[1])

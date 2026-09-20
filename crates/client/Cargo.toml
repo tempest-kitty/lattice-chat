@@ -1,12 +1,12 @@
 [package]
-name = "lattice-client"
+name = "twokitties-client"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-lattice-protocol = { path = "../protocol" }
+twokitties-protocol = { path = "../protocol" }
 
 [[bin]]
-name = "lattice-client"
+name = "twokitties-client"
 path = "src/main.rs"
