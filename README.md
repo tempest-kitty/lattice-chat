@@ -6,7 +6,7 @@ A cross-platform chat system planned as:
 - `lattice-server`: Linux-hosted server for accounts, communities, message history, media, and federation.
 - `lattice-protocol`: versioned shared protocol/domain types.
 
-Status: durable account storage milestone complete. The server now persists accounts and Argon2id password hashes in SQLite, with restart recovery and uniqueness checks. Sessions, rate limiting, email verification, and network authentication endpoints are still deferred.
+Status: session and request authorization milestone complete. The server now issues opaque expiring tokens, supports revocation, and authorizes commands only for valid sessions. TLS-backed network login and persistent session storage are still deferred.
 
 ## Build and test
 

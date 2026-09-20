@@ -41,4 +41,4 @@ Initial storage choice: SQLite for the first deployable server, with a storage t
 
 ## Current status
 
-Durable account storage milestone complete. SQLite schema initialization persists account records and Argon2id password hashes across database reopen, while duplicate identity and credential tests remain covered. Sessions, rate limits, and network authentication endpoints are not implemented yet.
+Session and request authorization milestone complete. Opaque expiring session tokens, revocation, and valid-session request authorization are tested. TLS-backed network login, persistent sessions, rate limits, and email verification are not implemented yet.

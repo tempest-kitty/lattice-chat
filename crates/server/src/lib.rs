@@ -1,7 +1,7 @@
 use argon2::Argon2;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use lattice_protocol::{ClientHello, HandshakeError, negotiate};
-use rand_core::OsRng;
+use rand_core::{OsRng, RngCore};
 use rusqlite::{Connection, OptionalExtension};
 use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead, BufReader, Write};
@@ -194,6 +194,83 @@ impl SqliteAccountStore {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct AuthenticatedRequest {
+    pub username: String,
+    pub command: String,
+}
+
+struct Session {
+    username: String,
+    expires_at: std::time::Instant,
+}
+
+pub struct SessionManager {
+    sessions: HashMap<String, Session>,
+    ttl: std::time::Duration,
+}
+
+impl SessionManager {
+    pub fn with_ttl(ttl: std::time::Duration) -> Self {
+        Self {
+            sessions: HashMap::new(),
+            ttl,
+        }
+    }
+
+    pub fn issue(&mut self, username: &str) -> String {
+        loop {
+            let mut bytes = [0_u8; 32];
+            OsRng.fill_bytes(&mut bytes);
+            let token: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+            if !self.sessions.contains_key(&token) {
+                self.sessions.insert(
+                    token.clone(),
+                    Session {
+                        username: username.to_owned(),
+                        expires_at: std::time::Instant::now() + self.ttl,
+                    },
+                );
+                return token;
+            }
+        }
+    }
+
+    pub fn validate(&mut self, token: &str) -> Option<String> {
+        self.validate_at(token, std::time::Instant::now())
+    }
+
+    pub fn validate_at(&mut self, token: &str, now: std::time::Instant) -> Option<String> {
+        let session = self.sessions.get(token)?;
+        if now >= session.expires_at {
+            self.sessions.remove(token);
+            return None;
+        }
+        Some(session.username.clone())
+    }
+
+    pub fn revoke(&mut self, token: &str) {
+        self.sessions.remove(token);
+    }
+}
+
+pub fn authorize_request(
+    sessions: &mut SessionManager,
+    token: &str,
+    command: &str,
+    now: std::time::Instant,
+) -> Option<AuthenticatedRequest> {
+    if command.trim().is_empty() {
+        return None;
+    }
+    sessions
+        .validate_at(token, now)
+        .map(|username| AuthenticatedRequest {
+            username,
+            command: command.to_owned(),
+        })
+}
+
 pub fn handle_handshake(stream: &mut TcpStream) -> io::Result<()> {
     let mut line = String::new();
     BufReader::new(stream.try_clone()?).read_line(&mut line)?;
@@ -352,6 +429,49 @@ mod tests {
         let _ = std::fs::remove_file(path);
     }
 
+    #[test]
+    fn sessions_validate_before_expiry_and_expire_after_ttl() {
+        let start = std::time::Instant::now();
+        let mut sessions = SessionManager::with_ttl(std::time::Duration::from_secs(60));
+        let token = sessions.issue("tempest");
+
+        assert_eq!(
+            sessions.validate_at(&token, start),
+            Some("tempest".to_owned())
+        );
+        assert_eq!(
+            sessions.validate_at(&token, start + std::time::Duration::from_secs(61)),
+            None
+        );
+    }
+
+    #[test]
+    fn revoked_sessions_cannot_authorize_requests() {
+        let start = std::time::Instant::now();
+        let mut sessions = SessionManager::with_ttl(std::time::Duration::from_secs(60));
+        let token = sessions.issue("tempest");
+        sessions.revoke(&token);
+
+        assert_eq!(
+            authorize_request(&mut sessions, &token, "LIST_CHANNELS", start),
+            None
+        );
+    }
+
+    #[test]
+    fn valid_session_authorizes_request_for_its_user() {
+        let start = std::time::Instant::now();
+        let mut sessions = SessionManager::with_ttl(std::time::Duration::from_secs(60));
+        let token = sessions.issue("tempest");
+
+        assert_eq!(
+            authorize_request(&mut sessions, &token, "LIST_CHANNELS", start),
+            Some(AuthenticatedRequest {
+                username: "tempest".to_owned(),
+                command: "LIST_CHANNELS".to_owned(),
+            })
+        );
+    }
     #[test]
     fn loopback_handshake_accepts_supported_version() {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback listener");

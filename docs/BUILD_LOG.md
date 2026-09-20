@@ -18,7 +18,9 @@
 - Added in-memory duplicate email/username protection and credential authentication tests.
 - Added SQLite account schema initialization and durable account storage.
 - Added restart persistence and SQLite duplicate/credential tests.
-- Full workspace verification passed: 12 tests plus doc/empty-crate suites.
+- Added opaque session tokens with configurable expiry and revocation.
+- Added authenticated request authorization checks for valid sessions.
+- Full workspace verification passed: 15 tests plus doc/empty-crate suites.
 - Compiled outputs remain under `/home/tempest/Projects/lattice-chat/target/`.
 - Created public GitHub repository: `https://github.com/tempest-kitty/lattice-chat`.
 - Configured `origin`, committed the foundation as `a359d46c4727`, pushed `main`, and verified the remote `main` commit through GitHub's API.
