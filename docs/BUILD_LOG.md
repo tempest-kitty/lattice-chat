@@ -15,6 +15,9 @@
 - Created public GitHub repository: `https://github.com/tempest-kitty/lattice-chat`.
 - Configured `origin`, committed the foundation as `a359d46c4727`, pushed `main`, and verified the remote `main` commit through GitHub's API.
 
+- Configured persistent GitHub authentication through `/home/tempest/.local/bin/git-credential-github-secret`, backed by the Linux Secret Service keyring.
+- Verified the keyring entry exists and `git ls-remote origin HEAD` succeeds without an interactive prompt.
+
 ### Not implemented yet
 
 Network transport, TLS, password hashing, persistent storage, chat history, E2EE, media, federation, desktop UI, packaging, and CI.
