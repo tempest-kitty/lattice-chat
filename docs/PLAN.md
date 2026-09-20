@@ -42,4 +42,4 @@ Initial storage choice: SQLite for the first deployable server, with a storage t
 
 ## Current status
 
-TLS transport milestone complete. PEM certificate/key loading, client trust configuration, and encrypted loopback handshake/login are tested. Public deployment still requires the self-hosting setup path, certificate automation, and service configuration.
+Self-hosting setup milestone complete. The Linux server binary reads generated environment configuration, initializes SQLite, serves TLS, and is installable through the tested setup script and systemd unit generation path. Trusted certificate automation, persistent sessions, and public service hardening remain.

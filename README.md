@@ -6,7 +6,7 @@ A cross-platform chat system planned as:
 - `lattice-server`: Linux-hosted server for accounts, communities, message history, media, and federation.
 - `lattice-protocol`: versioned shared protocol/domain types.
 
-Status: TLS transport milestone complete. The server loads PEM certificates, the client trusts configured roots, and a tested encrypted loopback exchange completes protocol negotiation and authenticated login. Public deployment still needs the self-hosting setup path and certificate automation.
+Status: self-hosting setup milestone complete. The Linux server binary reads generated configuration, serves TLS, initializes SQLite, and can be installed with the tested setup script and systemd unit. Trusted certificate automation, persistent sessions, and public service hardening remain.
 
 ## Build and test
 
@@ -19,6 +19,10 @@ cargo build --workspace
 ```
 
 Build outputs, including compiled binaries, stay under this project's `target/` directory.
+
+## Self-hosting
+
+The tested Linux setup path is documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Run `cargo build --release -p lattice-server`, then use `scripts/setup-server.sh --yes` to install the binary, initialize SQLite, generate initial TLS material, and create a systemd unit. The generated self-signed certificate is for initial testing only.
 
 ## Planned milestones
 

@@ -24,7 +24,11 @@
 - Added valid-login session issuance and invalid-login rejection tests.
 - Added TLS PEM certificate/key loading and client trust configuration.
 - Added encrypted loopback handshake and authenticated-login integration test.
-- Full workspace verification passed: 20 tests plus doc/empty-crate suites.
+- Added tested Linux self-hosting setup script with generated config, SQLite initialization, TLS material, systemd unit, dedicated service-account handling, and overwrite protection.
+- Added deployment documentation and isolated setup-script test.
+- Wired the server binary to generated environment configuration and TLS/SQLite paths.
+- Added release-binary deployment smoke test covering startup and TLS protocol negotiation.
+- Full workspace verification passed: 20 Rust tests plus setup-script, deployment-smoke, and doc/empty-crate checks.
 - Compiled outputs remain under `/home/tempest/Projects/lattice-chat/target/`.
 - Created public GitHub repository: `https://github.com/tempest-kitty/lattice-chat`.
 - Configured `origin`, committed the foundation as `a359d46c4727`, pushed `main`, and verified the remote `main` commit through GitHub's API.
