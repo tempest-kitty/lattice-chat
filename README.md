@@ -6,7 +6,7 @@ A cross-platform chat system planned as:
 - `lattice-server`: Linux-hosted server for accounts, communities, message history, media, and federation.
 - `lattice-protocol`: versioned shared protocol/domain types.
 
-Status: foundation milestone complete. The repository is a Rust workspace with a tested account-signup validation slice. Network transport, persistent storage, authentication, encryption, federation, media, and desktop UI are not implemented yet.
+Status: protocol/transport milestone complete. The shared protocol now negotiates version 1, and the server has a tested loopback TCP handshake. Network encryption and production transport are still deferred.
 
 ## Build and test
 

@@ -41,4 +41,4 @@ Initial storage choice: SQLite for the first deployable server, with a storage t
 
 ## Current status
 
-Foundation milestone complete. The signup slice validates basic email, username, and password requirements but does not authenticate users or hash passwords yet.
+Protocol/transport milestone complete. Protocol version 1 is negotiated over a loopback TCP handshake with tests for accepted and rejected versions. TLS and production network configuration are not implemented yet.
