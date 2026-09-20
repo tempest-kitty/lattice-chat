@@ -33,7 +33,9 @@ Produced by Kitty Dynamics.
 - Added eframe desktop client foundation with server address, TLS server name, trusted certificate, and secure connect workflow.
 - Added client TLS loopback integration tests against the TwoKitties server.
 - Linux workspace tests and client build passed; Windows cross-check is blocked by missing `x86_64-w64-mingw32-gcc` on this host.
-- Added desktop client documentation in `docs/CLIENT.md`.
+- Added client TLS authentication and session-token retention in the desktop client.
+- Embedded the supplied `assets/twokittiesico.png` icon in the native application window.
+- Client authentication loopback test and Linux release build passed.
 - Compiled outputs remain under `/home/tempest/Projects/twokitties/target/`.
 - Created public GitHub repository: `https://github.com/tempest-kitty/twokitties`.
 - Renamed the product from Lattice Chat to TwoKitties and attributed it to Kitty Dynamics.

@@ -52,6 +52,48 @@ pub fn connect_tls_and_handshake(
     Ok(response)
 }
 
+pub fn connect_tls_and_authenticate(
+    address: SocketAddr,
+    server_name: &str,
+    certificate_pem: &[u8],
+    username: &str,
+    password: &str,
+) -> Result<String, String> {
+    let config = Arc::new(build_client_config(certificate_pem)?);
+    let name = ServerName::try_from(server_name.to_owned())
+        .map_err(|error| format!("invalid server name: {error}"))?;
+    let connection = rustls::ClientConnection::new(config, name)
+        .map_err(|error| format!("TLS client setup failed: {error}"))?;
+    let stream =
+        TcpStream::connect(address).map_err(|error| format!("connection failed: {error}"))?;
+    let mut tls = StreamOwned::new(connection, stream);
+
+    writeln!(tls, "HELLO {}", twokitties_protocol::PROTOCOL_VERSION)
+        .map_err(|error| format!("sending handshake failed: {error}"))?;
+    let mut handshake_response = String::new();
+    BufReader::new(&mut tls)
+        .read_line(&mut handshake_response)
+        .map_err(|error| format!("reading handshake failed: {error}"))?;
+    let expected = format!("READY {}", twokitties_protocol::PROTOCOL_VERSION);
+    if handshake_response.trim_end() != expected {
+        return Err(format!(
+            "server rejected protocol: {}",
+            handshake_response.trim_end()
+        ));
+    }
+
+    writeln!(tls, "AUTH {username} {password}")
+        .map_err(|error| format!("sending authentication failed: {error}"))?;
+    let mut authentication_response = String::new();
+    BufReader::new(&mut tls)
+        .read_line(&mut authentication_response)
+        .map_err(|error| format!("reading authentication failed: {error}"))?;
+    let response = authentication_response.trim_end().to_owned();
+    if !response.starts_with("SESSION ") {
+        return Err(format!("authentication failed: {response}"));
+    }
+    Ok(response)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -86,8 +128,50 @@ mod tests {
     }
 
     #[test]
-    fn client_rejects_invalid_trust_certificate() {
-        let result = build_client_config(b"not a certificate");
-        assert!(result.is_err());
+    fn client_authenticates_over_the_negotiated_tls_connection() {
+        let generated = rcgen::generate_simple_self_signed(vec!["localhost".to_owned()])
+            .expect("generate certificate");
+        let cert_pem = generated.cert.pem();
+        let key_pem = generated.key_pair.serialize_pem();
+        let server_config = Arc::new(
+            twokitties_server::build_tls_server_config(cert_pem.as_bytes(), key_pem.as_bytes())
+                .expect("build server config"),
+        );
+        let database_path =
+            std::env::temp_dir().join(format!("twokitties-client-auth-{}.db", std::process::id()));
+        let mut store = twokitties_server::SqliteAccountStore::open(&database_path)
+            .expect("open test database");
+        store
+            .register(
+                "tempest@example.com",
+                "tempest",
+                "correct horse battery staple",
+            )
+            .expect("register test account");
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let address = listener.local_addr().expect("listener address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept client");
+            let connection =
+                rustls::ServerConnection::new(server_config).expect("create server TLS connection");
+            let mut tls = rustls::StreamOwned::new(connection, stream);
+            twokitties_server::handle_handshake(&mut tls).expect("complete handshake");
+            let mut sessions =
+                twokitties_server::SessionManager::with_ttl(std::time::Duration::from_secs(60));
+            twokitties_server::handle_auth_request(&mut tls, &store, &mut sessions)
+                .expect("complete authentication");
+        });
+
+        let response = connect_tls_and_authenticate(
+            address,
+            "localhost",
+            cert_pem.as_bytes(),
+            "tempest",
+            "correct horse battery staple",
+        )
+        .expect("client should authenticate");
+        assert!(response.starts_with("SESSION "));
+        server.join().expect("server thread should finish");
+        std::fs::remove_file(database_path).expect("remove test database");
     }
 }

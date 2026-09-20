@@ -44,4 +44,4 @@ Initial storage choice: SQLite for the first deployable server, with a storage t
 
 ## Current status
 
-Desktop client foundation complete. The eframe client has a TLS connection screen and tested protocol negotiation against a TwoKitties server. Linux builds pass; Windows cross-compilation is blocked on this host by the missing MinGW linker. Full login UI, chat UI, and packaging remain.
+Desktop client authentication foundation complete. The client now has a TLS login form, retains the issued session token in memory, and embeds the supplied TwoKitties icon. Full signup UI, chat UI, and packaging remain.

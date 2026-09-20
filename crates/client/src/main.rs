@@ -1,12 +1,15 @@
 use eframe::egui;
 use std::fs;
 use std::net::SocketAddr;
-use twokitties_client::connect_tls_and_handshake;
+use twokitties_client::connect_tls_and_authenticate;
 
 struct TwoKittiesApp {
     server_address: String,
     server_name: String,
     certificate_path: String,
+    username: String,
+    password: String,
+    session_token: Option<String>,
     status: String,
 }
 
@@ -16,13 +19,16 @@ impl Default for TwoKittiesApp {
             server_address: "127.0.0.1:9443".to_owned(),
             server_name: "localhost".to_owned(),
             certificate_path: "server.crt".to_owned(),
-            status: "Not connected".to_owned(),
+            username: String::new(),
+            password: String::new(),
+            session_token: None,
+            status: "Not authenticated".to_owned(),
         }
     }
 }
 
 impl TwoKittiesApp {
-    fn connect(&mut self) {
+    fn authenticate(&mut self) {
         let address: SocketAddr = match self.server_address.trim().parse() {
             Ok(address) => address,
             Err(error) => {
@@ -37,11 +43,22 @@ impl TwoKittiesApp {
                 return;
             }
         };
-        self.status =
-            match connect_tls_and_handshake(address, self.server_name.trim(), &certificate) {
-                Ok(response) => format!("Connected: {response}"),
-                Err(error) => format!("Connection failed: {error}"),
-            };
+        match connect_tls_and_authenticate(
+            address,
+            self.server_name.trim(),
+            &certificate,
+            self.username.trim(),
+            &self.password,
+        ) {
+            Ok(session) => {
+                self.session_token = Some(session);
+                self.status = format!("Authenticated as {}", self.username.trim());
+            }
+            Err(error) => {
+                self.session_token = None;
+                self.status = format!("Authentication failed: {error}");
+            }
+        }
     }
 }
 
@@ -51,6 +68,7 @@ impl eframe::App for TwoKittiesApp {
             ui.heading("TwoKitties");
             ui.label("Kitty Dynamics");
             ui.separator();
+            ui.heading("Secure sign in");
             ui.horizontal(|ui| {
                 ui.label("Server address");
                 ui.text_edit_singleline(&mut self.server_address);
@@ -63,8 +81,16 @@ impl eframe::App for TwoKittiesApp {
                 ui.label("Trusted certificate");
                 ui.text_edit_singleline(&mut self.certificate_path);
             });
-            if ui.button("Connect securely").clicked() {
-                self.connect();
+            ui.horizontal(|ui| {
+                ui.label("Username");
+                ui.text_edit_singleline(&mut self.username);
+            });
+            ui.horizontal(|ui| {
+                ui.label("Password");
+                ui.add(egui::TextEdit::singleline(&mut self.password).password(true));
+            });
+            if ui.button("Log in securely").clicked() {
+                self.authenticate();
             }
             ui.separator();
             ui.label(&self.status);
@@ -72,8 +98,25 @@ impl eframe::App for TwoKittiesApp {
     }
 }
 
+fn app_icon() -> egui::IconData {
+    let image = image::load_from_memory(include_bytes!("../../../assets/twokittiesico.png"))
+        .expect("embedded TwoKitties icon must be a valid PNG")
+        .to_rgba8();
+    let (width, height) = image.dimensions();
+    egui::IconData {
+        rgba: image.into_raw(),
+        width,
+        height,
+    }
+}
+
 fn main() -> eframe::Result<()> {
-    let options = eframe::NativeOptions::default();
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_title("TwoKitties — Kitty Dynamics")
+            .with_icon(app_icon()),
+        ..Default::default()
+    };
     eframe::run_native(
         "TwoKitties — Kitty Dynamics",
         options,

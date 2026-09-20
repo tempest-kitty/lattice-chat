@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 eframe = "0.30"
+image = { version = "0.25", default-features = false, features = ["png"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rustls-pemfile = "2"
 twokitties-protocol = { path = "../protocol" }

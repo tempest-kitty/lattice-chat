@@ -3179,6 +3179,7 @@ name = "twokitties-client"
 version = "0.1.0"
 dependencies = [
  "eframe",
+ "image",
  "rcgen",
  "rustls",
  "rustls-pemfile",
