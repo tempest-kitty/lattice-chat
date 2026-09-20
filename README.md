@@ -24,7 +24,7 @@ Build outputs, including compiled binaries, stay under this project's `target/` 
 
 ## Self-hosting
 
-The tested Linux setup path is documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Run `cargo build --release -p twokitties-server`, then use `scripts/setup-server.sh --yes` to install the binary, initialize SQLite, generate initial TLS material, and create a systemd unit. The desktop client workflow is documented in [`docs/CLIENT.md`](docs/CLIENT.md). The current client includes secure login and embeds the Kitty Dynamics TwoKitties icon from `assets/twokittiesico.png`.
+The tested Linux setup path is documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Run `cargo build --release -p twokitties-server`, then use `scripts/setup-server.sh --yes` to install the binary, initialize SQLite, generate initial TLS material, and create a systemd unit. The desktop client workflow is documented in [`docs/CLIENT.md`](docs/CLIENT.md). The current client includes secure login and account creation, and embeds the Kitty Dynamics TwoKitties icon from `assets/twokittiesico.png`.
 
 The generated self-signed certificate is for initial testing only.
 ## Planned milestones

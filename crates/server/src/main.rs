@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let private_key_path =
         std::env::var("TLS_KEY_PATH").unwrap_or_else(|_| "./server.key".to_owned());
 
-    let store = SqliteAccountStore::open(&database_path)?;
+    let mut store = SqliteAccountStore::open(&database_path)?;
     let certificate = fs::read(&certificate_path)?;
     let private_key = fs::read(&private_key_path)?;
     let tls_config = Arc::new(build_tls_server_config(&certificate, &private_key)?);
@@ -26,9 +26,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for incoming in listener.incoming() {
         match incoming {
             Ok(stream) => {
-                if let Err(error) =
-                    handle_tls_connection(stream, Arc::clone(&tls_config), &store, &mut sessions)
-                {
+                if let Err(error) = handle_tls_connection(
+                    stream,
+                    Arc::clone(&tls_config),
+                    &mut store,
+                    &mut sessions,
+                ) {
                     eprintln!("connection failed: {error}");
                 }
             }

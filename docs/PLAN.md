@@ -44,4 +44,4 @@ Initial storage choice: SQLite for the first deployable server, with a storage t
 
 ## Current status
 
-Desktop client authentication foundation complete. The client now has a TLS login form, retains the issued session token in memory, and embeds the supplied TwoKitties icon. Full signup UI, chat UI, and packaging remain.
+Desktop identity foundation complete. The client now supports TLS account creation and login, retains authenticated session state in memory, and embeds the supplied TwoKitties icon. Chat UI, message history, media, and packaging remain.

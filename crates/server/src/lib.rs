@@ -245,13 +245,13 @@ pub fn build_tls_client_config(certificate_pem: &[u8]) -> Result<ClientConfig, S
 pub fn handle_tls_connection(
     stream: TcpStream,
     config: std::sync::Arc<ServerConfig>,
-    store: &SqliteAccountStore,
+    store: &mut SqliteAccountStore,
     sessions: &mut SessionManager,
 ) -> io::Result<()> {
     let connection = ServerConnection::new(config).map_err(io::Error::other)?;
     let mut tls = StreamOwned::new(connection, stream);
     handle_handshake(&mut tls)?;
-    handle_auth_request(&mut tls, store, sessions)
+    handle_account_request(&mut tls, store, sessions)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -360,6 +360,81 @@ pub fn handle_auth_request<S: Read + Write>(
     writeln!(stream, "SESSION {token}")
 }
 
+pub fn handle_account_request<S: Read + Write>(
+    stream: &mut S,
+    store: &mut SqliteAccountStore,
+    sessions: &mut SessionManager,
+) -> io::Result<()> {
+    let mut line = String::new();
+    {
+        let mut reader = BufReader::new(&mut *stream);
+        reader.read_line(&mut line)?;
+    }
+    if line.starts_with("SIGNUP ") {
+        let mut fields = line.trim_end_matches(['\r', '\n']).splitn(4, ' ');
+        let (Some("SIGNUP"), Some(email), Some(username), Some(password)) =
+            (fields.next(), fields.next(), fields.next(), fields.next())
+        else {
+            writeln!(stream, "ERROR malformed_signup")?;
+            return Ok(());
+        };
+        return match store.register(email, username, password) {
+            Ok(()) => writeln!(stream, "REGISTERED {}", username.trim()),
+            Err(error) => writeln!(stream, "ERROR {}", registration_error_code(&error)),
+        };
+    }
+
+    let mut fields = line.trim_end_matches(['\r', '\n']).splitn(3, ' ');
+    let (Some("AUTH"), Some(username), Some(password)) =
+        (fields.next(), fields.next(), fields.next())
+    else {
+        writeln!(stream, "ERROR malformed_auth")?;
+        return Ok(());
+    };
+    if !store.authenticate(username, password) {
+        writeln!(stream, "ERROR unauthorized")?;
+        return Ok(());
+    }
+    let token = sessions.issue(username);
+    writeln!(stream, "SESSION {token}")
+}
+
+fn registration_error_code(error: &RegistrationError) -> &'static str {
+    match error {
+        RegistrationError::EmailAlreadyRegistered => "email_registered",
+        RegistrationError::UsernameAlreadyRegistered => "username_registered",
+        RegistrationError::Signup(SignupError::InvalidEmail) => "invalid_email",
+        RegistrationError::Signup(SignupError::InvalidUsername) => "invalid_username",
+        RegistrationError::Signup(SignupError::InvalidPassword) => "invalid_password",
+        RegistrationError::Signup(SignupError::PasswordHashingFailed) => "signup_failed",
+        RegistrationError::Storage(_) => "signup_failed",
+    }
+}
+
+pub fn handle_signup_request<S: Read + Write>(
+    stream: &mut S,
+    store: &mut SqliteAccountStore,
+    sessions: &mut SessionManager,
+) -> io::Result<()> {
+    let mut line = String::new();
+    {
+        let mut reader = BufReader::new(&mut *stream);
+        reader.read_line(&mut line)?;
+    }
+    let mut fields = line.trim_end_matches(['\r', '\n']).splitn(4, ' ');
+    let (Some("SIGNUP"), Some(email), Some(username), Some(password)) =
+        (fields.next(), fields.next(), fields.next(), fields.next())
+    else {
+        writeln!(stream, "ERROR malformed_signup")?;
+        return Ok(());
+    };
+    let _ = sessions;
+    match store.register(email, username, password) {
+        Ok(()) => writeln!(stream, "REGISTERED {}", username.trim()),
+        Err(error) => writeln!(stream, "ERROR {}", registration_error_code(&error)),
+    }
+}
+
 pub fn handle_handshake<S: Read + Write>(stream: &mut S) -> io::Result<()> {
     let mut line = String::new();
     {
@@ -394,6 +469,28 @@ mod tests {
     use std::net::{TcpListener, TcpStream};
     use std::thread;
     use twokitties_protocol::PROTOCOL_VERSION;
+
+    #[test]
+    fn signup_request_registers_account_and_returns_confirmation() {
+        let database_path = std::env::temp_dir().join(format!(
+            "twokitties-signup-request-{}.db",
+            std::process::id()
+        ));
+        let mut store = SqliteAccountStore::open(&database_path).expect("open database");
+        let mut sessions = SessionManager::with_ttl(std::time::Duration::from_secs(60));
+        let mut stream = std::io::Cursor::new(
+            b"SIGNUP tempest@example.com tempest correct horse battery staple\n".to_vec(),
+        );
+
+        handle_signup_request(&mut stream, &mut store, &mut sessions).expect("signup request");
+        assert!(
+            String::from_utf8(stream.into_inner())
+                .unwrap()
+                .ends_with("REGISTERED tempest\n")
+        );
+        assert!(store.authenticate("tempest", "correct horse battery staple"));
+        std::fs::remove_file(database_path).expect("remove database");
+    }
 
     #[test]
     fn signup_accepts_valid_account_details() {
@@ -607,7 +704,7 @@ mod tests {
         let server = thread::spawn(move || {
             let (stream, _) = listener.accept().expect("accept client");
             let mut sessions = SessionManager::with_ttl(std::time::Duration::from_secs(60));
-            handle_tls_connection(stream, server_config, &store, &mut sessions)
+            handle_tls_connection(stream, server_config, &mut store, &mut sessions)
                 .expect("complete TLS auth");
         });
 

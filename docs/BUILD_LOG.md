@@ -35,7 +35,10 @@ Produced by Kitty Dynamics.
 - Linux workspace tests and client build passed; Windows cross-check is blocked by missing `x86_64-w64-mingw32-gcc` on this host.
 - Added client TLS authentication and session-token retention in the desktop client.
 - Embedded the supplied `assets/twokittiesico.png` icon in the native application window.
-- Client authentication loopback test and Linux release build passed.
+- Added client TLS account creation with server-side validation and duplicate-identity errors.
+- Added desktop signup mode with email, username, and password fields.
+- Added client/server TLS signup integration test.
+- Full workspace verification passed: 24 Rust tests.
 - Compiled outputs remain under `/home/tempest/Projects/twokitties/target/`.
 - Created public GitHub repository: `https://github.com/tempest-kitty/twokitties`.
 - Renamed the product from Lattice Chat to TwoKitties and attributed it to Kitty Dynamics.

@@ -2,7 +2,7 @@
 
 Produced by Kitty Dynamics.
 
-The client performs secure login after protocol negotiation and embeds the supplied Kitty Dynamics icon from `assets/twokittiesico.png`.
+The client performs secure login and account creation after protocol negotiation and embeds the supplied Kitty Dynamics icon from `assets/twokittiesico.png`.
 
 The desktop client uses Rust/eframe and is intended to build on Linux and Windows. The current client slice provides a connection screen with:
 
