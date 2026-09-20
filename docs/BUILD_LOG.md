@@ -14,7 +14,9 @@
 - Added protocol version 1 negotiation types and unsupported-version rejection.
 - Added server loopback TCP handshake handling.
 - Added loopback tests for accepted and rejected protocol versions.
-- Full workspace verification passed: 7 tests plus doc/empty-crate suites.
+- Added Argon2id password hashing and verification.
+- Added in-memory duplicate email/username protection and credential authentication tests.
+- Full workspace verification passed: 10 tests plus doc/empty-crate suites.
 - Compiled outputs remain under `/home/tempest/Projects/lattice-chat/target/`.
 - Created public GitHub repository: `https://github.com/tempest-kitty/lattice-chat`.
 - Configured `origin`, committed the foundation as `a359d46c4727`, pushed `main`, and verified the remote `main` commit through GitHub's API.

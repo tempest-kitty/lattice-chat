@@ -5,7 +5,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+argon2 = "0.5"
 lattice-protocol = { path = "../protocol" }
+rand_core = { version = "0.6", features = ["getrandom"] }
 
 [lib]
 path = "src/lib.rs"

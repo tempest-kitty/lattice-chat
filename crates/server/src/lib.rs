@@ -1,13 +1,16 @@
+use argon2::Argon2;
+use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use lattice_protocol::{ClientHello, HandshakeError, negotiate};
+use rand_core::OsRng;
+use std::collections::{HashMap, HashSet};
+use std::io::{self, BufRead, BufReader, Write};
+use std::net::TcpStream;
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Account {
     pub email: String,
     pub username: String,
-    password_verifier: PasswordVerifier,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum PasswordVerifier {
-    DeferredToAuthenticationMilestone,
+    password_hash: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -15,11 +18,12 @@ pub enum SignupError {
     InvalidEmail,
     InvalidUsername,
     InvalidPassword,
+    PasswordHashingFailed,
 }
 
 impl Account {
     pub fn signup(email: &str, username: &str, password: &str) -> Result<Self, SignupError> {
-        let email = email.trim();
+        let email = email.trim().to_lowercase();
         let username = username.trim();
 
         if !email.contains('@') || email.starts_with('@') || email.ends_with('@') {
@@ -32,17 +36,78 @@ impl Account {
             return Err(SignupError::InvalidPassword);
         }
 
+        let salt = SaltString::generate(&mut OsRng);
+        let password_hash = Argon2::default()
+            .hash_password(password.as_bytes(), &salt)
+            .map_err(|_| SignupError::PasswordHashingFailed)?
+            .to_string();
+
         Ok(Self {
-            email: email.to_owned(),
+            email,
             username: username.to_owned(),
-            password_verifier: PasswordVerifier::DeferredToAuthenticationMilestone,
+            password_hash,
         })
+    }
+
+    pub fn verify_password(&self, password: &str) -> bool {
+        let Ok(hash) = PasswordHash::new(&self.password_hash) else {
+            return false;
+        };
+        Argon2::default()
+            .verify_password(password.as_bytes(), &hash)
+            .is_ok()
     }
 }
 
-use lattice_protocol::{ClientHello, HandshakeError, negotiate};
-use std::io::{self, BufRead, BufReader, Write};
-use std::net::TcpStream;
+#[derive(Debug, PartialEq, Eq)]
+pub enum RegistrationError {
+    EmailAlreadyRegistered,
+    UsernameAlreadyRegistered,
+    Signup(SignupError),
+}
+
+pub struct AccountRegistry {
+    accounts_by_username: HashMap<String, Account>,
+    registered_emails: HashSet<String>,
+}
+
+impl AccountRegistry {
+    pub fn new() -> Self {
+        Self {
+            accounts_by_username: HashMap::new(),
+            registered_emails: HashSet::new(),
+        }
+    }
+
+    pub fn register(
+        &mut self,
+        email: &str,
+        username: &str,
+        password: &str,
+    ) -> Result<(), RegistrationError> {
+        let normalized_email = email.trim().to_lowercase();
+        let normalized_username = username.trim().to_owned();
+        if self.registered_emails.contains(&normalized_email) {
+            return Err(RegistrationError::EmailAlreadyRegistered);
+        }
+        if self.accounts_by_username.contains_key(&normalized_username) {
+            return Err(RegistrationError::UsernameAlreadyRegistered);
+        }
+
+        let account =
+            Account::signup(email, username, password).map_err(RegistrationError::Signup)?;
+        self.registered_emails.insert(account.email.clone());
+        self.accounts_by_username
+            .insert(account.username.clone(), account);
+        Ok(())
+    }
+
+    pub fn authenticate(&self, username: &str, password: &str) -> bool {
+        self.accounts_by_username
+            .get(username.trim())
+            .is_some_and(|account| account.verify_password(password))
+    }
+}
 
 pub fn handle_handshake(stream: &mut TcpStream) -> io::Result<()> {
     let mut line = String::new();
@@ -99,6 +164,56 @@ mod tests {
     fn signup_rejects_short_password_without_storing_it() {
         let result = Account::signup("person@example.com", "tempest", "short");
         assert_eq!(result, Err(SignupError::InvalidPassword));
+    }
+
+    #[test]
+    fn signup_password_can_be_verified_without_exposing_the_hash() {
+        let account = Account::signup(
+            "person@example.com",
+            "tempest",
+            "a sufficiently long password",
+        )
+        .expect("valid signup should succeed");
+
+        assert!(account.verify_password("a sufficiently long password"));
+        assert!(!account.verify_password("the wrong password"));
+    }
+
+    #[test]
+    fn account_registry_rejects_duplicate_email_and_username() {
+        let mut registry = AccountRegistry::new();
+        registry
+            .register(
+                "person@example.com",
+                "tempest",
+                "a sufficiently long password",
+            )
+            .expect("first account should register");
+
+        assert_eq!(
+            registry.register("person@example.com", "another", "another long password"),
+            Err(RegistrationError::EmailAlreadyRegistered)
+        );
+        assert_eq!(
+            registry.register("other@example.com", "tempest", "another long password"),
+            Err(RegistrationError::UsernameAlreadyRegistered)
+        );
+    }
+
+    #[test]
+    fn account_registry_authenticates_valid_credentials() {
+        let mut registry = AccountRegistry::new();
+        registry
+            .register(
+                "person@example.com",
+                "tempest",
+                "a sufficiently long password",
+            )
+            .expect("account should register");
+
+        assert!(registry.authenticate("tempest", "a sufficiently long password"));
+        assert!(!registry.authenticate("tempest", "wrong password"));
+        assert!(!registry.authenticate("missing", "a sufficiently long password"));
     }
 
     #[test]

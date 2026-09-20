@@ -41,4 +41,4 @@ Initial storage choice: SQLite for the first deployable server, with a storage t
 
 ## Current status
 
-Protocol/transport milestone complete. Protocol version 1 is negotiated over a loopback TCP handshake with tests for accepted and rejected versions. TLS and production network configuration are not implemented yet.
+Authentication milestone complete. Account signup hashes passwords with Argon2id, verifies credentials, and rejects duplicate email addresses and usernames in memory. Persistent storage, sessions, rate limits, and network authentication endpoints are not implemented yet.
