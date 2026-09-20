@@ -7,6 +7,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatMessage {
     pub id: i64,
+    pub channel: String,
     pub username: String,
     pub created_at: String,
     pub content: String,
@@ -62,10 +63,11 @@ pub fn send_message_tls(
     server_name: &str,
     certificate_pem: &[u8],
     session_token: &str,
+    channel: &str,
     content: &str,
 ) -> Result<i64, String> {
     let mut tls = connect_tls(address, server_name, certificate_pem)?;
-    writeln!(tls, "SEND {session_token} {content}")
+    writeln!(tls, "SEND {session_token} {channel} {content}")
         .map_err(|error| format!("sending message failed: {error}"))?;
     let mut response = String::new();
     BufReader::new(&mut tls)
@@ -84,10 +86,11 @@ pub fn fetch_history_tls(
     server_name: &str,
     certificate_pem: &[u8],
     session_token: &str,
+    channel: &str,
     limit: u32,
 ) -> Result<Vec<ChatMessage>, String> {
     let mut tls = connect_tls(address, server_name, certificate_pem)?;
-    writeln!(tls, "HISTORY {session_token} {limit}")
+    writeln!(tls, "HISTORY {session_token} {channel} {limit}")
         .map_err(|error| format!("requesting history failed: {error}"))?;
     let mut reader = BufReader::new(&mut tls);
     let mut messages = Vec::new();
@@ -103,17 +106,18 @@ pub fn fetch_history_tls(
         if let Some(rest) = line.strip_prefix("ERROR ") {
             return Err(format!("history failed: {rest}"));
         }
-        let parts: Vec<_> = line.splitn(6, ' ').collect();
-        if parts.len() != 6 || parts[0] != "MESSAGE" {
+        let parts: Vec<_> = line.splitn(7, ' ').collect();
+        if parts.len() != 7 || parts[0] != "MESSAGE" {
             return Err(format!("malformed history response: {line}"));
         }
         messages.push(ChatMessage {
             id: parts[1]
                 .parse()
                 .map_err(|error| format!("invalid message id: {error}"))?,
-            username: parts[2].to_owned(),
-            created_at: format!("{} {}", parts[3], parts[4]),
-            content: parts[5].to_owned(),
+            channel: parts[2].to_owned(),
+            username: parts[3].to_owned(),
+            created_at: format!("{} {}", parts[4], parts[5]),
+            content: parts[6].to_owned(),
         });
     }
 }
@@ -211,7 +215,7 @@ mod tests {
                 twokitties_server::handle_chat_request(&mut tls, &mut store, &mut sessions)
                     .expect("complete chat request");
                 if request == 0 {
-                    assert_eq!(store.message_history(10).unwrap().len(), 1);
+                    assert_eq!(store.message_history("general", 10).unwrap().len(), 1);
                 }
             }
         });
@@ -221,13 +225,20 @@ mod tests {
             "localhost",
             cert_pem.as_bytes(),
             &client_token,
+            "general",
             "hello from the client",
         )
         .expect("send message");
         assert_eq!(sent_id, 1);
-        let history =
-            fetch_history_tls(address, "localhost", cert_pem.as_bytes(), &client_token, 10)
-                .expect("fetch history");
+        let history = fetch_history_tls(
+            address,
+            "localhost",
+            cert_pem.as_bytes(),
+            &client_token,
+            "general",
+            10,
+        )
+        .expect("fetch history");
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].content, "hello from the client");
         server.join().expect("server thread should finish");
@@ -236,11 +247,12 @@ mod tests {
 
     #[test]
     fn parses_history_message_with_timestamp_and_spaces() {
-        let line = "MESSAGE 7 tempest 2026-09-20 19:30:00 hello there";
-        let parts: Vec<_> = line.splitn(6, ' ').collect();
-        assert_eq!(parts.len(), 6);
+        let line = "MESSAGE 7 general tempest 2026-09-20 19:30:00 hello there";
+        let parts: Vec<_> = line.splitn(7, ' ').collect();
+        assert_eq!(parts.len(), 7);
         assert_eq!(parts[1], "7");
-        assert_eq!(format!("{} {}", parts[3], parts[4]), "2026-09-20 19:30:00");
-        assert_eq!(parts[5], "hello there");
+        assert_eq!(parts[2], "general");
+        assert_eq!(format!("{} {}", parts[4], parts[5]), "2026-09-20 19:30:00");
+        assert_eq!(parts[6], "hello there");
     }
 }

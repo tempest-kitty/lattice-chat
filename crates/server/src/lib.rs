@@ -122,6 +122,7 @@ pub struct SqliteAccountStore {
 
 pub struct MessageRecord {
     pub id: i64,
+    pub channel: String,
     pub username: String,
     pub content: String,
     pub created_at: String,
@@ -140,11 +141,23 @@ impl SqliteAccountStore {
             );
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY,
+                channel TEXT NOT NULL DEFAULT 'general',
                 username TEXT NOT NULL,
                 content TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );",
         )?;
+        let has_channel: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('messages') WHERE name = 'channel')",
+            [],
+            |row| row.get(0),
+        )?;
+        if !has_channel {
+            connection.execute(
+                "ALTER TABLE messages ADD COLUMN channel TEXT NOT NULL DEFAULT 'general'",
+                [],
+            )?;
+        }
         Ok(Self { connection })
     }
 
@@ -211,7 +224,16 @@ impl SqliteAccountStore {
         }
     }
 
-    pub fn store_message(&mut self, username: &str, content: &str) -> Result<i64, String> {
+    pub fn store_message(
+        &mut self,
+        channel: &str,
+        username: &str,
+        content: &str,
+    ) -> Result<i64, String> {
+        let channel = channel.trim();
+        if channel.is_empty() || channel.len() > 64 {
+            return Err("invalid_channel".to_owned());
+        }
         let content = content.trim();
         if content.is_empty() {
             return Err("message_empty".to_owned());
@@ -221,23 +243,28 @@ impl SqliteAccountStore {
         }
         self.connection
             .execute(
-                "INSERT INTO messages (username, content) VALUES (?1, ?2)",
-                [username.trim(), content],
+                "INSERT INTO messages (channel, username, content) VALUES (?1, ?2, ?3)",
+                [channel, username.trim(), content],
             )
             .map_err(|error| error.to_string())?;
         Ok(self.connection.last_insert_rowid())
     }
 
-    pub fn message_history(&self, limit: u32) -> rusqlite::Result<Vec<MessageRecord>> {
+    pub fn message_history(
+        &self,
+        channel: &str,
+        limit: u32,
+    ) -> rusqlite::Result<Vec<MessageRecord>> {
         let mut statement = self.connection.prepare(
-            "SELECT id, username, content, created_at FROM messages ORDER BY id ASC LIMIT ?1",
+            "SELECT id, channel, username, content, created_at FROM messages WHERE channel = ?1 ORDER BY id ASC LIMIT ?2",
         )?;
-        let rows = statement.query_map([limit], |row| {
+        let rows = statement.query_map((channel.trim(), limit), |row| {
             Ok(MessageRecord {
                 id: row.get(0)?,
-                username: row.get(1)?,
-                content: row.get(2)?,
-                created_at: row.get(3)?,
+                channel: row.get(1)?,
+                username: row.get(2)?,
+                content: row.get(3)?,
+                created_at: row.get(4)?,
             })
         })?;
         rows.collect()
@@ -503,9 +530,9 @@ fn handle_chat_line<S: Read + Write>(
     line: &str,
 ) -> io::Result<()> {
     let line = line.trim_end_matches(['\r', '\n']);
-    let mut fields = line.splitn(3, ' ');
-    match (fields.next(), fields.next()) {
-        (Some("SEND"), Some(token)) => {
+    let mut fields = line.splitn(4, ' ');
+    match (fields.next(), fields.next(), fields.next()) {
+        (Some("SEND"), Some(token), Some(channel)) => {
             let Some(username) = sessions.validate(token) else {
                 writeln!(stream, "ERROR unauthorized")?;
                 return Ok(());
@@ -514,12 +541,12 @@ fn handle_chat_line<S: Read + Write>(
                 writeln!(stream, "ERROR malformed_message")?;
                 return Ok(());
             };
-            match store.store_message(&username, content) {
+            match store.store_message(channel, &username, content) {
                 Ok(id) => writeln!(stream, "SENT {id}"),
                 Err(error) => writeln!(stream, "ERROR {error}"),
             }
         }
-        (Some("HISTORY"), Some(token)) => {
+        (Some("HISTORY"), Some(token), Some(channel)) => {
             let Some(_username) = sessions.validate(token) else {
                 writeln!(stream, "ERROR unauthorized")?;
                 return Ok(());
@@ -529,11 +556,18 @@ fn handle_chat_line<S: Read + Write>(
                 .and_then(|value| value.parse::<u32>().ok())
                 .unwrap_or(50)
                 .clamp(1, 100);
-            for message in store.message_history(limit).map_err(io::Error::other)? {
+            for message in store
+                .message_history(channel, limit)
+                .map_err(io::Error::other)?
+            {
                 writeln!(
                     stream,
-                    "MESSAGE {} {} {} {}",
-                    message.id, message.username, message.created_at, message.content
+                    "MESSAGE {} {} {} {} {}",
+                    message.id,
+                    message.channel,
+                    message.username,
+                    message.created_at,
+                    message.content
                 )?;
             }
             writeln!(stream, "END")
@@ -584,7 +618,8 @@ mod tests {
         let mut store = SqliteAccountStore::open(&database_path).expect("open database");
         let mut sessions = SessionManager::with_ttl(std::time::Duration::from_secs(60));
         let token = sessions.issue("tempest");
-        let mut send = std::io::Cursor::new(format!("SEND {token} hello chat\n").into_bytes());
+        let mut send =
+            std::io::Cursor::new(format!("SEND {token} general hello chat\n").into_bytes());
         handle_chat_request(&mut send, &mut store, &mut sessions).expect("send message");
         assert!(
             String::from_utf8(send.into_inner())
@@ -592,10 +627,11 @@ mod tests {
                 .ends_with("SENT 1\n")
         );
 
-        let mut history = std::io::Cursor::new(format!("HISTORY {token} 10\n").into_bytes());
+        let mut history =
+            std::io::Cursor::new(format!("HISTORY {token} general 10\n").into_bytes());
         handle_chat_request(&mut history, &mut store, &mut sessions).expect("read history");
         let response = String::from_utf8(history.into_inner()).unwrap();
-        assert!(response.contains("MESSAGE 1 tempest "));
+        assert!(response.contains("MESSAGE 1 general tempest "));
         assert!(response.contains(" hello chat\n"));
         assert!(response.ends_with("END\n"));
         std::fs::remove_file(database_path).expect("remove database");
@@ -609,13 +645,13 @@ mod tests {
         ));
         let mut store = SqliteAccountStore::open(&database_path).expect("open database");
         let first_id = store
-            .store_message("tempest", "hello world")
+            .store_message("general", "tempest", "hello world")
             .expect("store first message");
         store
-            .store_message("other", "reply")
+            .store_message("general", "other", "reply")
             .expect("store second message");
 
-        let history = store.message_history(10).expect("read history");
+        let history = store.message_history("general", 10).expect("read history");
         assert_eq!(history.len(), 2);
         assert_eq!(history[0].id, first_id);
         assert_eq!(history[0].username, "tempest");

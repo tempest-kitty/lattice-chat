@@ -41,7 +41,10 @@ Produced by Kitty Dynamics.
 - Added persistent SQLite message storage with sender, content, ID, and timestamp.
 - Added authenticated `SEND` and `HISTORY` requests on the TLS listener.
 - Added desktop post-login chat view with history refresh, message sending, and logout.
-- Added client/server chat integration test.
+- Added named channel storage and channel-scoped history queries, with migration support for existing message tables.
+- Updated authenticated `SEND` and `HISTORY` requests to include a channel.
+- Added a desktop channel selector for post-login chat.
+- Full workspace verification passed: 25 Rust tests.
 - Compiled outputs remain under `/home/tempest/Projects/twokitties/target/`.
 - Created public GitHub repository: `https://github.com/tempest-kitty/twokitties`.
 - Renamed the product from Lattice Chat to TwoKitties and attributed it to Kitty Dynamics.

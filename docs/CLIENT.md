@@ -2,7 +2,7 @@
 
 Produced by Kitty Dynamics.
 
-The client performs secure login and account creation after protocol negotiation, then provides a text chat view with message sending and persistent history refresh. It embeds the supplied Kitty Dynamics icon from `assets/twokittiesico.png`.
+The client performs secure login and account creation after protocol negotiation, then provides a text chat view with named-channel selection, message sending, and channel-scoped history refresh. It embeds the supplied Kitty Dynamics icon from `assets/twokittiesico.png`.
 
 The desktop client uses Rust/eframe and is intended to build on Linux and Windows. The current client slice provides a connection screen with:
 

@@ -44,4 +44,4 @@ Initial storage choice: SQLite for the first deployable server, with a storage t
 
 ## Current status
 
-Chat foundation complete. Authenticated clients can send text messages over TLS, the Linux server persists them in SQLite, and the desktop client can refresh and display message history. Media, federation, richer chat UX, and packaging remain.
+Channel foundation complete. Authenticated clients can send text messages over TLS into named channels, the Linux server persists channel-scoped history in SQLite, and the desktop client can switch channels and refresh history. Persistent live connections, media, federation, and packaging remain.

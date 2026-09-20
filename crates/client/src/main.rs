@@ -15,6 +15,7 @@ struct TwoKittiesApp {
     password: String,
     signup_mode: bool,
     session_token: Option<String>,
+    channel: String,
     messages: Vec<ChatMessage>,
     message_input: String,
     status: String,
@@ -31,6 +32,7 @@ impl Default for TwoKittiesApp {
             password: String::new(),
             signup_mode: false,
             session_token: None,
+            channel: "general".to_owned(),
             messages: Vec::new(),
             message_input: String::new(),
             status: "Not authenticated".to_owned(),
@@ -105,7 +107,14 @@ impl TwoKittiesApp {
             self.status = self.connection_details().unwrap_err();
             return;
         };
-        match fetch_history_tls(address, self.server_name.trim(), &certificate, token, 100) {
+        match fetch_history_tls(
+            address,
+            self.server_name.trim(),
+            &certificate,
+            token,
+            self.channel.trim(),
+            100,
+        ) {
             Ok(messages) => {
                 self.messages = messages;
                 self.status = format!("Loaded {} messages", self.messages.len());
@@ -131,6 +140,7 @@ impl TwoKittiesApp {
             self.server_name.trim(),
             &certificate,
             token,
+            self.channel.trim(),
             &self.message_input,
         ) {
             Ok(_) => {
@@ -143,6 +153,10 @@ impl TwoKittiesApp {
 
     fn show_chat(&mut self, ui: &mut egui::Ui) {
         ui.heading("Chat");
+        ui.horizontal(|ui| {
+            ui.label("Channel");
+            ui.text_edit_singleline(&mut self.channel);
+        });
         if ui.button("Refresh history").clicked() {
             self.refresh_history();
         }
