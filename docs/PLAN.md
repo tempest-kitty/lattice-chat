@@ -41,4 +41,4 @@ Initial storage choice: SQLite for the first deployable server, with a storage t
 
 ## Current status
 
-Authentication milestone complete. Account signup hashes passwords with Argon2id, verifies credentials, and rejects duplicate email addresses and usernames in memory. Persistent storage, sessions, rate limits, and network authentication endpoints are not implemented yet.
+Durable account storage milestone complete. SQLite schema initialization persists account records and Argon2id password hashes across database reopen, while duplicate identity and credential tests remain covered. Sessions, rate limits, and network authentication endpoints are not implemented yet.

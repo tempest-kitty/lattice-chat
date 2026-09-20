@@ -2,6 +2,7 @@ use argon2::Argon2;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use lattice_protocol::{ClientHello, HandshakeError, negotiate};
 use rand_core::OsRng;
+use rusqlite::{Connection, OptionalExtension};
 use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::TcpStream;
@@ -64,6 +65,7 @@ pub enum RegistrationError {
     EmailAlreadyRegistered,
     UsernameAlreadyRegistered,
     Signup(SignupError),
+    Storage(String),
 }
 
 pub struct AccountRegistry {
@@ -106,6 +108,89 @@ impl AccountRegistry {
         self.accounts_by_username
             .get(username.trim())
             .is_some_and(|account| account.verify_password(password))
+    }
+}
+
+pub struct SqliteAccountStore {
+    connection: Connection,
+}
+
+impl SqliteAccountStore {
+    pub fn open(path: impl AsRef<std::path::Path>) -> rusqlite::Result<Self> {
+        let connection = Connection::open(path)?;
+        connection.execute_batch(
+            "CREATE TABLE IF NOT EXISTS accounts (
+                id INTEGER PRIMARY KEY,
+                email TEXT NOT NULL UNIQUE,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );",
+        )?;
+        Ok(Self { connection })
+    }
+
+    pub fn register(
+        &mut self,
+        email: &str,
+        username: &str,
+        password: &str,
+    ) -> Result<(), RegistrationError> {
+        let normalized_email = email.trim().to_lowercase();
+        let normalized_username = username.trim();
+        let email_exists: bool = self
+            .connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM accounts WHERE email = ?1)",
+                [&normalized_email],
+                |row| row.get(0),
+            )
+            .map_err(|error| RegistrationError::Storage(error.to_string()))?;
+        if email_exists {
+            return Err(RegistrationError::EmailAlreadyRegistered);
+        }
+
+        let username_exists: bool = self
+            .connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM accounts WHERE username = ?1)",
+                [normalized_username],
+                |row| row.get(0),
+            )
+            .map_err(|error| RegistrationError::Storage(error.to_string()))?;
+        if username_exists {
+            return Err(RegistrationError::UsernameAlreadyRegistered);
+        }
+
+        let account =
+            Account::signup(email, username, password).map_err(RegistrationError::Signup)?;
+        self.connection
+            .execute(
+                "INSERT INTO accounts (email, username, password_hash) VALUES (?1, ?2, ?3)",
+                (&account.email, &account.username, &account.password_hash),
+            )
+            .map_err(|error| RegistrationError::Storage(error.to_string()))?;
+        Ok(())
+    }
+
+    pub fn authenticate(&self, username: &str, password: &str) -> bool {
+        let hash = self
+            .connection
+            .query_row(
+                "SELECT password_hash FROM accounts WHERE username = ?1",
+                [username.trim()],
+                |row| row.get::<_, String>(0),
+            )
+            .optional();
+        match hash {
+            Ok(Some(hash)) => Account {
+                email: String::new(),
+                username: username.trim().to_owned(),
+                password_hash: hash,
+            }
+            .verify_password(password),
+            _ => false,
+        }
     }
 }
 
@@ -214,6 +299,57 @@ mod tests {
         assert!(registry.authenticate("tempest", "a sufficiently long password"));
         assert!(!registry.authenticate("tempest", "wrong password"));
         assert!(!registry.authenticate("missing", "a sufficiently long password"));
+    }
+
+    #[test]
+    fn sqlite_accounts_survive_reopening_the_database() {
+        let path = test_database_path("reopen");
+        {
+            let mut store = SqliteAccountStore::open(&path).expect("open database");
+            store
+                .register(
+                    "person@example.com",
+                    "tempest",
+                    "a sufficiently long password",
+                )
+                .expect("register account");
+        }
+
+        let reopened = SqliteAccountStore::open(&path).expect("reopen database");
+        assert!(reopened.authenticate("tempest", "a sufficiently long password"));
+        assert!(!reopened.authenticate("tempest", "wrong password"));
+        remove_test_database(&path);
+    }
+
+    #[test]
+    fn sqlite_accounts_reject_duplicate_email_and_username() {
+        let path = test_database_path("duplicates");
+        let mut store = SqliteAccountStore::open(&path).expect("open database");
+        store
+            .register(
+                "person@example.com",
+                "tempest",
+                "a sufficiently long password",
+            )
+            .expect("register account");
+
+        assert_eq!(
+            store.register("person@example.com", "another", "another long password"),
+            Err(RegistrationError::EmailAlreadyRegistered)
+        );
+        assert_eq!(
+            store.register("other@example.com", "tempest", "another long password"),
+            Err(RegistrationError::UsernameAlreadyRegistered)
+        );
+        remove_test_database(&path);
+    }
+
+    fn test_database_path(label: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("lattice-chat-{label}-{}.db", std::process::id()))
+    }
+
+    fn remove_test_database(path: &std::path::Path) {
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
