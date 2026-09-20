@@ -38,7 +38,10 @@ Produced by Kitty Dynamics.
 - Added client TLS account creation with server-side validation and duplicate-identity errors.
 - Added desktop signup mode with email, username, and password fields.
 - Added client/server TLS signup integration test.
-- Full workspace verification passed: 24 Rust tests.
+- Added persistent SQLite message storage with sender, content, ID, and timestamp.
+- Added authenticated `SEND` and `HISTORY` requests on the TLS listener.
+- Added desktop post-login chat view with history refresh, message sending, and logout.
+- Added client/server chat integration test.
 - Compiled outputs remain under `/home/tempest/Projects/twokitties/target/`.
 - Created public GitHub repository: `https://github.com/tempest-kitty/twokitties`.
 - Renamed the product from Lattice Chat to TwoKitties and attributed it to Kitty Dynamics.

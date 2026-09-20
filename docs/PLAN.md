@@ -44,4 +44,4 @@ Initial storage choice: SQLite for the first deployable server, with a storage t
 
 ## Current status
 
-Desktop identity foundation complete. The client now supports TLS account creation and login, retains authenticated session state in memory, and embeds the supplied TwoKitties icon. Chat UI, message history, media, and packaging remain.
+Chat foundation complete. Authenticated clients can send text messages over TLS, the Linux server persists them in SQLite, and the desktop client can refresh and display message history. Media, federation, richer chat UX, and packaging remain.

@@ -120,6 +120,13 @@ pub struct SqliteAccountStore {
     connection: Connection,
 }
 
+pub struct MessageRecord {
+    pub id: i64,
+    pub username: String,
+    pub content: String,
+    pub created_at: String,
+}
+
 impl SqliteAccountStore {
     pub fn open(path: impl AsRef<std::path::Path>) -> rusqlite::Result<Self> {
         let connection = Connection::open(path)?;
@@ -129,6 +136,12 @@ impl SqliteAccountStore {
                 email TEXT NOT NULL UNIQUE,
                 username TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY,
+                username TEXT NOT NULL,
+                content TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );",
         )?;
@@ -196,6 +209,38 @@ impl SqliteAccountStore {
             .verify_password(password),
             _ => false,
         }
+    }
+
+    pub fn store_message(&mut self, username: &str, content: &str) -> Result<i64, String> {
+        let content = content.trim();
+        if content.is_empty() {
+            return Err("message_empty".to_owned());
+        }
+        if content.chars().count() > 4_000 {
+            return Err("message_too_long".to_owned());
+        }
+        self.connection
+            .execute(
+                "INSERT INTO messages (username, content) VALUES (?1, ?2)",
+                [username.trim(), content],
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(self.connection.last_insert_rowid())
+    }
+
+    pub fn message_history(&self, limit: u32) -> rusqlite::Result<Vec<MessageRecord>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, username, content, created_at FROM messages ORDER BY id ASC LIMIT ?1",
+        )?;
+        let rows = statement.query_map([limit], |row| {
+            Ok(MessageRecord {
+                id: row.get(0)?,
+                username: row.get(1)?,
+                content: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        })?;
+        rows.collect()
     }
 }
 
@@ -370,6 +415,9 @@ pub fn handle_account_request<S: Read + Write>(
         let mut reader = BufReader::new(&mut *stream);
         reader.read_line(&mut line)?;
     }
+    if line.starts_with("SEND ") || line.starts_with("HISTORY ") {
+        return handle_chat_line(stream, store, sessions, &line);
+    }
     if line.starts_with("SIGNUP ") {
         let mut fields = line.trim_end_matches(['\r', '\n']).splitn(4, ' ');
         let (Some("SIGNUP"), Some(email), Some(username), Some(password)) =
@@ -435,6 +483,65 @@ pub fn handle_signup_request<S: Read + Write>(
     }
 }
 
+pub fn handle_chat_request<S: Read + Write>(
+    stream: &mut S,
+    store: &mut SqliteAccountStore,
+    sessions: &mut SessionManager,
+) -> io::Result<()> {
+    let mut line = String::new();
+    {
+        let mut reader = BufReader::new(&mut *stream);
+        reader.read_line(&mut line)?;
+    }
+    handle_chat_line(stream, store, sessions, &line)
+}
+
+fn handle_chat_line<S: Read + Write>(
+    stream: &mut S,
+    store: &mut SqliteAccountStore,
+    sessions: &mut SessionManager,
+    line: &str,
+) -> io::Result<()> {
+    let line = line.trim_end_matches(['\r', '\n']);
+    let mut fields = line.splitn(3, ' ');
+    match (fields.next(), fields.next()) {
+        (Some("SEND"), Some(token)) => {
+            let Some(username) = sessions.validate(token) else {
+                writeln!(stream, "ERROR unauthorized")?;
+                return Ok(());
+            };
+            let Some(content) = fields.next() else {
+                writeln!(stream, "ERROR malformed_message")?;
+                return Ok(());
+            };
+            match store.store_message(&username, content) {
+                Ok(id) => writeln!(stream, "SENT {id}"),
+                Err(error) => writeln!(stream, "ERROR {error}"),
+            }
+        }
+        (Some("HISTORY"), Some(token)) => {
+            let Some(_username) = sessions.validate(token) else {
+                writeln!(stream, "ERROR unauthorized")?;
+                return Ok(());
+            };
+            let limit = fields
+                .next()
+                .and_then(|value| value.parse::<u32>().ok())
+                .unwrap_or(50)
+                .clamp(1, 100);
+            for message in store.message_history(limit).map_err(io::Error::other)? {
+                writeln!(
+                    stream,
+                    "MESSAGE {} {} {} {}",
+                    message.id, message.username, message.created_at, message.content
+                )?;
+            }
+            writeln!(stream, "END")
+        }
+        _ => writeln!(stream, "ERROR malformed_chat"),
+    }
+}
+
 pub fn handle_handshake<S: Read + Write>(stream: &mut S) -> io::Result<()> {
     let mut line = String::new();
     {
@@ -469,6 +576,53 @@ mod tests {
     use std::net::{TcpListener, TcpStream};
     use std::thread;
     use twokitties_protocol::PROTOCOL_VERSION;
+
+    #[test]
+    fn authenticated_chat_requests_store_and_return_history() {
+        let database_path =
+            std::env::temp_dir().join(format!("twokitties-chat-request-{}.db", std::process::id()));
+        let mut store = SqliteAccountStore::open(&database_path).expect("open database");
+        let mut sessions = SessionManager::with_ttl(std::time::Duration::from_secs(60));
+        let token = sessions.issue("tempest");
+        let mut send = std::io::Cursor::new(format!("SEND {token} hello chat\n").into_bytes());
+        handle_chat_request(&mut send, &mut store, &mut sessions).expect("send message");
+        assert!(
+            String::from_utf8(send.into_inner())
+                .unwrap()
+                .ends_with("SENT 1\n")
+        );
+
+        let mut history = std::io::Cursor::new(format!("HISTORY {token} 10\n").into_bytes());
+        handle_chat_request(&mut history, &mut store, &mut sessions).expect("read history");
+        let response = String::from_utf8(history.into_inner()).unwrap();
+        assert!(response.contains("MESSAGE 1 tempest "));
+        assert!(response.contains(" hello chat\n"));
+        assert!(response.ends_with("END\n"));
+        std::fs::remove_file(database_path).expect("remove database");
+    }
+
+    #[test]
+    fn sqlite_store_persists_message_history() {
+        let database_path = std::env::temp_dir().join(format!(
+            "twokitties-message-history-{}.db",
+            std::process::id()
+        ));
+        let mut store = SqliteAccountStore::open(&database_path).expect("open database");
+        let first_id = store
+            .store_message("tempest", "hello world")
+            .expect("store first message");
+        store
+            .store_message("other", "reply")
+            .expect("store second message");
+
+        let history = store.message_history(10).expect("read history");
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].id, first_id);
+        assert_eq!(history[0].username, "tempest");
+        assert_eq!(history[0].content, "hello world");
+        assert!(!history[0].created_at.is_empty());
+        std::fs::remove_file(database_path).expect("remove database");
+    }
 
     #[test]
     fn signup_request_registers_account_and_returns_confirmation() {
