@@ -75,6 +75,10 @@ TLS_KEY="$DATA_DIR/tls/server.key"
 if [[ ! -e "$TLS_CERT" || ! -e "$TLS_KEY" || $FORCE == 1 ]]; then
   openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
     -subj '/CN=twokitties-self-hosted' \
+    -addext 'basicConstraints=critical,CA:FALSE' \
+    -addext 'keyUsage=critical,digitalSignature,keyEncipherment' \
+    -addext 'extendedKeyUsage=serverAuth' \
+    -addext 'subjectAltName=DNS:twokitties-self-hosted,IP:127.0.0.1' \
     -keyout "$TLS_KEY" -out "$TLS_CERT" >/dev/null 2>&1
   chmod 600 -- "$TLS_KEY"
   chmod 644 -- "$TLS_CERT"
