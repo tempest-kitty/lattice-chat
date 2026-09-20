@@ -6,7 +6,7 @@ A cross-platform chat system planned as:
 - `lattice-server`: Linux-hosted server for accounts, communities, message history, media, and federation.
 - `lattice-protocol`: versioned shared protocol/domain types.
 
-Status: authentication request endpoint milestone complete. The server can validate SQLite credentials over a loopback request handler and issue session tokens. The handler is explicitly restricted to a confidential transport; TLS is required before public deployment.
+Status: TLS transport milestone complete. The server loads PEM certificates, the client trusts configured roots, and a tested encrypted loopback exchange completes protocol negotiation and authenticated login. Public deployment still needs the self-hosting setup path and certificate automation.
 
 ## Build and test
 
@@ -31,7 +31,8 @@ Build outputs, including compiled binaries, stay under this project's `target/` 
 7. Rich media — upload/download authorization, quotas, thumbnails, MIME validation, malware-scanning integration point, encrypted media keys.
 8. Federation — server identity, signed server-to-server protocol, trust policy, replay protection, replication/conflict tests.
 9. Desktop client — Linux/Windows UI, account flow, chat/history/media UX, secure local key storage.
-10. Packaging and release — reproducible builds, Linux packages, Windows installer/portable build, upgrade/migration tests, security review checklist.
+10. Self-hosting and deployment — one-command setup, generated configuration, database initialization, service management, firewall/TLS certificate guidance, upgrades, backups, and uninstall/rollback tests.
+11. Packaging and release — reproducible builds, Linux packages, Windows installer/portable build, upgrade/migration tests, security review checklist.
 
 Each milestone must have a failing test before implementation, passing automated tests after implementation, and a documented verification result.
 

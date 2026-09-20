@@ -22,7 +22,9 @@
 - Added authenticated request authorization checks for valid sessions.
 - Added AUTH request handling against SQLite credentials.
 - Added valid-login session issuance and invalid-login rejection tests.
-- Full workspace verification passed: 17 tests plus doc/empty-crate suites.
+- Added TLS PEM certificate/key loading and client trust configuration.
+- Added encrypted loopback handshake and authenticated-login integration test.
+- Full workspace verification passed: 20 tests plus doc/empty-crate suites.
 - Compiled outputs remain under `/home/tempest/Projects/lattice-chat/target/`.
 - Created public GitHub repository: `https://github.com/tempest-kitty/lattice-chat`.
 - Configured `origin`, committed the foundation as `a359d46c4727`, pushed `main`, and verified the remote `main` commit through GitHub's API.

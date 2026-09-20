@@ -29,7 +29,8 @@ Initial storage choice: SQLite for the first deployable server, with a storage t
 7. Media: authorized upload/download, limits, and encrypted media-key handling pass tests.
 8. Federation: signed peer authentication, replay protection, and replication consistency pass tests.
 9. Client: Linux and Windows builds, UI smoke tests, and secure key storage checks pass.
-10. Release: packaging, upgrade, backup/restore, and security checklist pass.
+10. Self-hosting/deployment: one-command setup, generated config, database initialization, service management, TLS certificate guidance, backups, upgrades, and rollback tests pass.
+11. Release: packaging, upgrade, backup/restore, uninstall, and security checklist pass.
 
 ## Open decisions
 
@@ -41,4 +42,4 @@ Initial storage choice: SQLite for the first deployable server, with a storage t
 
 ## Current status
 
-Authentication request endpoint milestone complete. A tested AUTH request validates SQLite credentials and returns an opaque session token; invalid credentials are rejected. The handler must only be exposed after TLS is added. Public network deployment, persistent sessions, rate limits, and email verification remain deferred.
+TLS transport milestone complete. PEM certificate/key loading, client trust configuration, and encrypted loopback handshake/login are tested. Public deployment still requires the self-hosting setup path, certificate automation, and service configuration.

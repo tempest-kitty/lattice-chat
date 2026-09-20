@@ -17,6 +17,10 @@
 - Every server-to-server operation is authenticated, authorized, versioned, and replay-resistant.
 - Media uses separately authorized objects and encrypted media keys.
 
+- Self-hosting is a first-class requirement: setup must be easy for non-developers, repeatable, documented, and tested on a clean Linux machine.
+- Deployment must generate explicit configuration, initialize storage safely, support service management, explain TLS certificates, and provide backup/upgrade/rollback paths.
+
 ## Delivery order
 
 Implement one vertical slice at a time: test, minimal implementation, integration test, documentation. Do not add federation or media before single-server identity, authorization, and durable history are reliable.
+

@@ -3,8 +3,13 @@ use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, Salt
 use lattice_protocol::{ClientHello, HandshakeError, negotiate};
 use rand_core::{OsRng, RngCore};
 use rusqlite::{Connection, OptionalExtension};
+use rustls::{
+    ClientConfig, RootCertStore, ServerConfig, ServerConnection, StreamOwned,
+    pki_types::PrivateKeyDer,
+};
+use rustls_pemfile::{certs, private_key};
 use std::collections::{HashMap, HashSet};
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -194,6 +199,61 @@ impl SqliteAccountStore {
     }
 }
 
+pub fn build_tls_server_config(
+    certificate_pem: &[u8],
+    private_key_pem: &[u8],
+) -> Result<ServerConfig, String> {
+    let mut certificate_reader = std::io::BufReader::new(certificate_pem);
+    let certificates = certs(&mut certificate_reader)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("invalid certificate PEM: {error}"))?;
+    if certificates.is_empty() {
+        return Err("certificate PEM contained no certificates".to_owned());
+    }
+
+    let mut key_reader = std::io::BufReader::new(private_key_pem);
+    let key = private_key(&mut key_reader)
+        .map_err(|error| format!("invalid private key PEM: {error}"))?
+        .ok_or_else(|| "private key PEM contained no private key".to_owned())?;
+    let key = PrivateKeyDer::from(key);
+
+    ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(certificates, key)
+        .map_err(|error| format!("invalid TLS certificate/key pair: {error}"))
+}
+
+pub fn build_tls_client_config(certificate_pem: &[u8]) -> Result<ClientConfig, String> {
+    let mut certificate_reader = std::io::BufReader::new(certificate_pem);
+    let certificates = certs(&mut certificate_reader)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("invalid certificate PEM: {error}"))?;
+    if certificates.is_empty() {
+        return Err("certificate PEM contained no certificates".to_owned());
+    }
+    let mut roots = RootCertStore::empty();
+    for certificate in certificates {
+        roots
+            .add(certificate)
+            .map_err(|error| format!("invalid root certificate: {error}"))?;
+    }
+    Ok(ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth())
+}
+
+pub fn handle_tls_connection(
+    stream: TcpStream,
+    config: std::sync::Arc<ServerConfig>,
+    store: &SqliteAccountStore,
+    sessions: &mut SessionManager,
+) -> io::Result<()> {
+    let connection = ServerConnection::new(config).map_err(io::Error::other)?;
+    let mut tls = StreamOwned::new(connection, stream);
+    handle_handshake(&mut tls)?;
+    handle_auth_request(&mut tls, store, sessions)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct AuthenticatedRequest {
     pub username: String,
@@ -273,13 +333,16 @@ pub fn authorize_request(
 
 /// Handles an AUTH request on a transport that is already confidential.
 /// Do not expose this handler on an unencrypted public socket.
-pub fn handle_auth_request(
-    stream: &mut TcpStream,
+pub fn handle_auth_request<S: Read + Write>(
+    stream: &mut S,
     store: &SqliteAccountStore,
     sessions: &mut SessionManager,
 ) -> io::Result<()> {
     let mut line = String::new();
-    BufReader::new(stream.try_clone()?).read_line(&mut line)?;
+    {
+        let mut reader = BufReader::new(&mut *stream);
+        reader.read_line(&mut line)?;
+    }
     let mut fields = line.trim_end_matches(['\r', '\n']).splitn(3, ' ');
     let (Some("AUTH"), Some(username), Some(password)) =
         (fields.next(), fields.next(), fields.next())
@@ -297,9 +360,12 @@ pub fn handle_auth_request(
     writeln!(stream, "SESSION {token}")
 }
 
-pub fn handle_handshake(stream: &mut TcpStream) -> io::Result<()> {
+pub fn handle_handshake<S: Read + Write>(stream: &mut S) -> io::Result<()> {
     let mut line = String::new();
-    BufReader::new(stream.try_clone()?).read_line(&mut line)?;
+    {
+        let mut reader = BufReader::new(&mut *stream);
+        reader.read_line(&mut line)?;
+    }
     let mut fields = line.split_whitespace();
 
     let version = match (
@@ -497,6 +563,75 @@ mod tests {
                 command: "LIST_CHANNELS".to_owned(),
             })
         );
+    }
+    #[test]
+    fn tls_server_config_accepts_generated_certificate() {
+        let generated = rcgen::generate_simple_self_signed(vec!["localhost".to_owned()])
+            .expect("generate certificate");
+        let cert_pem = generated.cert.pem();
+        let key_pem = generated.key_pair.serialize_pem();
+
+        let config = build_tls_server_config(cert_pem.as_bytes(), key_pem.as_bytes())
+            .expect("valid certificate should build TLS config");
+        assert_eq!(config.alpn_protocols, Vec::<Vec<u8>>::new());
+    }
+
+    #[test]
+    fn tls_server_config_rejects_invalid_certificate() {
+        assert!(build_tls_server_config(b"not a certificate", b"not a key").is_err());
+    }
+    #[test]
+    fn tls_connection_can_complete_handshake_and_authenticate() {
+        let generated = rcgen::generate_simple_self_signed(vec!["localhost".to_owned()])
+            .expect("generate certificate");
+        let cert_pem = generated.cert.pem();
+        let key_pem = generated.key_pair.serialize_pem();
+        let server_config = std::sync::Arc::new(
+            build_tls_server_config(cert_pem.as_bytes(), key_pem.as_bytes())
+                .expect("build server config"),
+        );
+        let client_config = std::sync::Arc::new(
+            build_tls_client_config(cert_pem.as_bytes()).expect("build client config"),
+        );
+        let path = test_database_path("tls-auth");
+        let mut store = SqliteAccountStore::open(&path).expect("open database");
+        store
+            .register(
+                "person@example.com",
+                "tempest",
+                "a sufficiently long password",
+            )
+            .expect("register account");
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let address = listener.local_addr().expect("listener address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept client");
+            let mut sessions = SessionManager::with_ttl(std::time::Duration::from_secs(60));
+            handle_tls_connection(stream, server_config, &store, &mut sessions)
+                .expect("complete TLS auth");
+        });
+
+        let stream = TcpStream::connect(address).expect("connect client");
+        let server_name =
+            rustls::pki_types::ServerName::try_from("localhost").expect("valid server name");
+        let connection = rustls::ClientConnection::new(client_config, server_name)
+            .expect("create client TLS connection");
+        let mut tls = rustls::StreamOwned::new(connection, stream);
+        writeln!(tls, "HELLO {PROTOCOL_VERSION}").expect("send hello");
+        let mut response = String::new();
+        BufReader::new(&mut tls)
+            .read_line(&mut response)
+            .expect("read hello response");
+        assert_eq!(response, format!("READY {PROTOCOL_VERSION}\n"));
+        writeln!(tls, "AUTH tempest a sufficiently long password").expect("send auth");
+        response.clear();
+        BufReader::new(&mut tls)
+            .read_line(&mut response)
+            .expect("read auth response");
+        assert!(response.starts_with("SESSION "));
+
+        server.join().expect("server thread should finish");
+        remove_test_database(&path);
     }
     #[test]
     fn auth_request_returns_session_token_for_valid_credentials() {

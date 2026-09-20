@@ -8,7 +8,12 @@ license.workspace = true
 argon2 = "0.5"
 lattice-protocol = { path = "../protocol" }
 rand_core = { version = "0.6", features = ["getrandom"] }
+rustls = "0.23"
+rustls-pemfile = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
+
+[dev-dependencies]
+rcgen = "0.13"
 
 [lib]
 path = "src/lib.rs"
