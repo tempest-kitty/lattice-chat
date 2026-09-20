@@ -250,6 +250,27 @@ impl SqliteAccountStore {
         Ok(self.connection.last_insert_rowid())
     }
 
+    pub fn message_history_after(
+        &self,
+        channel: &str,
+        after_id: i64,
+        limit: u32,
+    ) -> rusqlite::Result<Vec<MessageRecord>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, channel, username, content, created_at FROM messages WHERE channel = ?1 AND id > ?2 ORDER BY id ASC LIMIT ?3",
+        )?;
+        let rows = statement.query_map((channel.trim(), after_id, limit), |row| {
+            Ok(MessageRecord {
+                id: row.get(0)?,
+                channel: row.get(1)?,
+                username: row.get(2)?,
+                content: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?;
+        rows.collect()
+    }
+
     pub fn message_history(
         &self,
         channel: &str,
@@ -523,8 +544,8 @@ pub fn handle_chat_request<S: Read + Write>(
     handle_chat_line(stream, store, sessions, &line)
 }
 
-fn handle_chat_line<S: Read + Write>(
-    stream: &mut S,
+fn handle_chat_line<W: Write>(
+    stream: &mut W,
     store: &mut SqliteAccountStore,
     sessions: &mut SessionManager,
     line: &str,
@@ -576,6 +597,125 @@ fn handle_chat_line<S: Read + Write>(
     }
 }
 
+pub fn handle_persistent_chat_connection<S: Read + Write>(
+    stream: &mut S,
+    store: &mut SqliteAccountStore,
+    sessions: &mut SessionManager,
+) -> io::Result<()> {
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    reader.read_line(&mut line)?;
+    let command = line.trim_end_matches(['\r', '\n']);
+    let username = if let Some(rest) = command.strip_prefix("AUTH ") {
+        let mut fields = rest.splitn(2, ' ');
+        let (Some(username), Some(password)) = (fields.next(), fields.next()) else {
+            writeln!(reader.get_mut(), "ERROR malformed_auth")?;
+            return Ok(());
+        };
+        if !store.authenticate(username, password) {
+            writeln!(reader.get_mut(), "ERROR unauthorized")?;
+            return Ok(());
+        }
+        let token = sessions.issue(username);
+        writeln!(reader.get_mut(), "SESSION {token}")?;
+        username.to_owned()
+    } else if let Some(token) = command.strip_prefix("SESSION ") {
+        let Some(username) = sessions.validate(token) else {
+            writeln!(reader.get_mut(), "ERROR unauthorized")?;
+            return Ok(());
+        };
+        writeln!(reader.get_mut(), "SESSION_OK")?;
+        username
+    } else if command.starts_with("SIGNUP ") {
+        let mut fields = command.splitn(4, ' ');
+        let (Some("SIGNUP"), Some(email), Some(username), Some(password)) =
+            (fields.next(), fields.next(), fields.next(), fields.next())
+        else {
+            writeln!(reader.get_mut(), "ERROR malformed_signup")?;
+            return Ok(());
+        };
+        match store.register(email, username, password) {
+            Ok(()) => writeln!(reader.get_mut(), "REGISTERED {}", username.trim())?,
+            Err(error) => writeln!(
+                reader.get_mut(),
+                "ERROR {}",
+                registration_error_code(&error)
+            )?,
+        }
+        return Ok(());
+    } else {
+        writeln!(reader.get_mut(), "ERROR authentication_required")?;
+        return Ok(());
+    };
+    loop {
+        line.clear();
+        let bytes_read = match reader.read_line(&mut line) {
+            Ok(bytes_read) => bytes_read,
+            Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        if bytes_read == 0 {
+            return Ok(());
+        }
+        let command = line.trim_end_matches(['\r', '\n']);
+        if command == "QUIT" {
+            writeln!(reader.get_mut(), "BYE")?;
+            return Ok(());
+        }
+        if command.starts_with("SEND ") {
+            let mut fields = command.splitn(3, ' ');
+            let (Some("SEND"), Some(channel), Some(content)) =
+                (fields.next(), fields.next(), fields.next())
+            else {
+                writeln!(reader.get_mut(), "ERROR malformed_message")?;
+                continue;
+            };
+            match store.store_message(channel, &username, content) {
+                Ok(id) => writeln!(reader.get_mut(), "SENT {id}")?,
+                Err(error) => writeln!(reader.get_mut(), "ERROR {error}")?,
+            }
+        } else if command.starts_with("HISTORY ") {
+            let mut fields = command.splitn(3, ' ');
+            let (Some("HISTORY"), Some(channel), Some(limit)) =
+                (fields.next(), fields.next(), fields.next())
+            else {
+                writeln!(reader.get_mut(), "ERROR malformed_history")?;
+                continue;
+            };
+            let limit = limit.parse::<u32>().unwrap_or(50).clamp(1, 100);
+            for message in store
+                .message_history(channel, limit)
+                .map_err(io::Error::other)?
+            {
+                writeln!(
+                    reader.get_mut(),
+                    "MESSAGE {} {} {} {} {}",
+                    message.id,
+                    message.channel,
+                    message.username,
+                    message.created_at,
+                    message.content
+                )?;
+            }
+            writeln!(reader.get_mut(), "END")?;
+        } else {
+            writeln!(reader.get_mut(), "ERROR malformed_chat")?;
+        }
+    }
+}
+
+pub fn handle_persistent_tls_connection(
+    stream: TcpStream,
+    config: std::sync::Arc<ServerConfig>,
+    store: &mut SqliteAccountStore,
+    sessions: &mut SessionManager,
+) -> io::Result<()> {
+    let connection = ServerConnection::new(config).map_err(io::Error::other)?;
+    let mut tls = StreamOwned::new(connection, stream);
+    handle_handshake(&mut tls)?;
+    handle_persistent_chat_connection(&mut tls, store, sessions)
+}
+
 pub fn handle_handshake<S: Read + Write>(stream: &mut S) -> io::Result<()> {
     let mut line = String::new();
     {
@@ -610,6 +750,31 @@ mod tests {
     use std::net::{TcpListener, TcpStream};
     use std::thread;
     use twokitties_protocol::PROTOCOL_VERSION;
+
+    #[test]
+    fn persistent_connection_authenticates_and_handles_multiple_commands() {
+        let database_path =
+            std::env::temp_dir().join(format!("twokitties-persistent-{}.db", std::process::id()));
+        let mut store = SqliteAccountStore::open(&database_path).expect("open database");
+        store
+            .register(
+                "tempest@example.com",
+                "tempest",
+                "correct horse battery staple",
+            )
+            .expect("register account");
+        let mut sessions = SessionManager::with_ttl(std::time::Duration::from_secs(60));
+        let input = b"AUTH tempest correct horse battery staple\nSEND general hello\nHISTORY general 10\nQUIT\n";
+        let mut stream = std::io::Cursor::new(input.to_vec());
+        handle_persistent_chat_connection(&mut stream, &mut store, &mut sessions)
+            .expect("persistent connection");
+        let output = String::from_utf8(stream.into_inner()).unwrap();
+        assert!(output.contains("SESSION "));
+        assert!(output.contains("SENT 1"));
+        assert!(output.contains("END"));
+        assert!(output.contains("BYE"));
+        std::fs::remove_file(database_path).expect("remove database");
+    }
 
     #[test]
     fn authenticated_chat_requests_store_and_return_history() {

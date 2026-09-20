@@ -67,7 +67,16 @@ pub fn send_message_tls(
     content: &str,
 ) -> Result<i64, String> {
     let mut tls = connect_tls(address, server_name, certificate_pem)?;
-    writeln!(tls, "SEND {session_token} {channel} {content}")
+    writeln!(tls, "SESSION {session_token}")
+        .map_err(|error| format!("starting session failed: {error}"))?;
+    let mut ready = String::new();
+    BufReader::new(&mut tls)
+        .read_line(&mut ready)
+        .map_err(|error| format!("reading session response failed: {error}"))?;
+    if ready.trim_end() != "SESSION_OK" {
+        return Err(format!("session failed: {}", ready.trim_end()));
+    }
+    writeln!(tls, "SEND {channel} {content}")
         .map_err(|error| format!("sending message failed: {error}"))?;
     let mut response = String::new();
     BufReader::new(&mut tls)
@@ -90,7 +99,16 @@ pub fn fetch_history_tls(
     limit: u32,
 ) -> Result<Vec<ChatMessage>, String> {
     let mut tls = connect_tls(address, server_name, certificate_pem)?;
-    writeln!(tls, "HISTORY {session_token} {channel} {limit}")
+    writeln!(tls, "SESSION {session_token}")
+        .map_err(|error| format!("starting session failed: {error}"))?;
+    let mut ready = String::new();
+    BufReader::new(&mut tls)
+        .read_line(&mut ready)
+        .map_err(|error| format!("reading session response failed: {error}"))?;
+    if ready.trim_end() != "SESSION_OK" {
+        return Err(format!("session failed: {}", ready.trim_end()));
+    }
+    writeln!(tls, "HISTORY {channel} {limit}")
         .map_err(|error| format!("requesting history failed: {error}"))?;
     let mut reader = BufReader::new(&mut tls);
     let mut messages = Vec::new();
@@ -212,8 +230,12 @@ mod tests {
                     .expect("create server TLS connection");
                 let mut tls = rustls::StreamOwned::new(connection, stream);
                 twokitties_server::handle_handshake(&mut tls).expect("complete handshake");
-                twokitties_server::handle_chat_request(&mut tls, &mut store, &mut sessions)
-                    .expect("complete chat request");
+                twokitties_server::handle_persistent_chat_connection(
+                    &mut tls,
+                    &mut store,
+                    &mut sessions,
+                )
+                .expect("complete chat request");
                 if request == 0 {
                     assert_eq!(store.message_history("general", 10).unwrap().len(), 1);
                 }

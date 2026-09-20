@@ -3,7 +3,7 @@ use std::net::TcpListener;
 use std::sync::Arc;
 use std::time::Duration;
 use twokitties_server::{
-    SessionManager, SqliteAccountStore, build_tls_server_config, handle_tls_connection,
+    SessionManager, SqliteAccountStore, build_tls_server_config, handle_persistent_tls_connection,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -26,7 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for incoming in listener.incoming() {
         match incoming {
             Ok(stream) => {
-                if let Err(error) = handle_tls_connection(
+                if let Err(error) = handle_persistent_tls_connection(
                     stream,
                     Arc::clone(&tls_config),
                     &mut store,

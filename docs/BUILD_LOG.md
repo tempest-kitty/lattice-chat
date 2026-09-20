@@ -56,7 +56,16 @@ Produced by Kitty Dynamics.
 
 ### Remaining work
 
-Chat history, E2EE, media, federation, desktop UI, trusted certificate automation, persistent sessions, packaging, public service hardening, and CI remain.
+Chat history, E2EE, media, federation, desktop UI, trusted certificate automation, packaging, public service hardening, and CI remain.
+
+### Persistent authenticated chat connection milestone
+
+- Added a persistent TLS chat handler that authenticates once and accepts repeated `SEND`, `HISTORY`, and `QUIT` commands.
+- Added `SESSION <token>` connection resumption for existing authenticated client operations.
+- Added clean handling for normal TLS peer disconnects.
+- Updated the production server listener and client chat helpers to use the persistent framing.
+- Added an integration test covering one connection handling multiple authenticated commands.
+- Workspace verification passed: 26 tests; release build passed.
 
 ### Security note
 
