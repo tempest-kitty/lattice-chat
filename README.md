@@ -6,7 +6,7 @@ A cross-platform chat system planned as:
 - `lattice-server`: Linux-hosted server for accounts, communities, message history, media, and federation.
 - `lattice-protocol`: versioned shared protocol/domain types.
 
-Status: session and request authorization milestone complete. The server now issues opaque expiring tokens, supports revocation, and authorizes commands only for valid sessions. TLS-backed network login and persistent session storage are still deferred.
+Status: authentication request endpoint milestone complete. The server can validate SQLite credentials over a loopback request handler and issue session tokens. The handler is explicitly restricted to a confidential transport; TLS is required before public deployment.
 
 ## Build and test
 

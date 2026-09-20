@@ -41,4 +41,4 @@ Initial storage choice: SQLite for the first deployable server, with a storage t
 
 ## Current status
 
-Session and request authorization milestone complete. Opaque expiring session tokens, revocation, and valid-session request authorization are tested. TLS-backed network login, persistent sessions, rate limits, and email verification are not implemented yet.
+Authentication request endpoint milestone complete. A tested AUTH request validates SQLite credentials and returns an opaque session token; invalid credentials are rejected. The handler must only be exposed after TLS is added. Public network deployment, persistent sessions, rate limits, and email verification remain deferred.

@@ -271,6 +271,32 @@ pub fn authorize_request(
         })
 }
 
+/// Handles an AUTH request on a transport that is already confidential.
+/// Do not expose this handler on an unencrypted public socket.
+pub fn handle_auth_request(
+    stream: &mut TcpStream,
+    store: &SqliteAccountStore,
+    sessions: &mut SessionManager,
+) -> io::Result<()> {
+    let mut line = String::new();
+    BufReader::new(stream.try_clone()?).read_line(&mut line)?;
+    let mut fields = line.trim_end_matches(['\r', '\n']).splitn(3, ' ');
+    let (Some("AUTH"), Some(username), Some(password)) =
+        (fields.next(), fields.next(), fields.next())
+    else {
+        writeln!(stream, "ERROR malformed_auth")?;
+        return Ok(());
+    };
+
+    if !store.authenticate(username, password) {
+        writeln!(stream, "ERROR unauthorized")?;
+        return Ok(());
+    }
+
+    let token = sessions.issue(username);
+    writeln!(stream, "SESSION {token}")
+}
+
 pub fn handle_handshake(stream: &mut TcpStream) -> io::Result<()> {
     let mut line = String::new();
     BufReader::new(stream.try_clone()?).read_line(&mut line)?;
@@ -472,6 +498,69 @@ mod tests {
             })
         );
     }
+    #[test]
+    fn auth_request_returns_session_token_for_valid_credentials() {
+        let path = test_database_path("auth-valid");
+        let mut store = SqliteAccountStore::open(&path).expect("open database");
+        store
+            .register(
+                "person@example.com",
+                "tempest",
+                "a sufficiently long password",
+            )
+            .expect("register account");
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let address = listener.local_addr().expect("listener address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept client");
+            let mut sessions = SessionManager::with_ttl(std::time::Duration::from_secs(60));
+            handle_auth_request(&mut stream, &store, &mut sessions).expect("handle auth");
+        });
+
+        let mut client = TcpStream::connect(address).expect("connect client");
+        writeln!(client, "AUTH tempest a sufficiently long password").expect("send auth");
+        let mut response = String::new();
+        BufReader::new(client)
+            .read_line(&mut response)
+            .expect("read auth response");
+
+        assert!(response.starts_with("SESSION "));
+        assert_eq!(response.trim_end().len(), "SESSION ".len() + 64);
+        server.join().expect("server thread should finish");
+        remove_test_database(&path);
+    }
+
+    #[test]
+    fn auth_request_rejects_invalid_credentials() {
+        let path = test_database_path("auth-invalid");
+        let mut store = SqliteAccountStore::open(&path).expect("open database");
+        store
+            .register(
+                "person@example.com",
+                "tempest",
+                "a sufficiently long password",
+            )
+            .expect("register account");
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let address = listener.local_addr().expect("listener address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept client");
+            let mut sessions = SessionManager::with_ttl(std::time::Duration::from_secs(60));
+            handle_auth_request(&mut stream, &store, &mut sessions).expect("handle auth");
+        });
+
+        let mut client = TcpStream::connect(address).expect("connect client");
+        writeln!(client, "AUTH tempest wrong password").expect("send auth");
+        let mut response = String::new();
+        BufReader::new(client)
+            .read_line(&mut response)
+            .expect("read auth response");
+
+        assert_eq!(response, "ERROR unauthorized\n");
+        server.join().expect("server thread should finish");
+        remove_test_database(&path);
+    }
+
     #[test]
     fn loopback_handshake_accepts_supported_version() {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback listener");
