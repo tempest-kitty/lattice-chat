@@ -12,6 +12,8 @@
 - `cargo test --workspace` passed: 3 server tests plus empty crate/doc test suites.
 - `cargo build --workspace` passed.
 - Compiled outputs are in `/home/tempest/Projects/lattice-chat/target/`.
+- Created public GitHub repository: `https://github.com/tempest-kitty/lattice-chat`.
+- Configured `origin`, committed the foundation as `a359d46c4727`, pushed `main`, and verified the remote `main` commit through GitHub's API.
 
 ### Not implemented yet
 
