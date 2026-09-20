@@ -30,7 +30,10 @@ Produced by Kitty Dynamics.
 - Added deployment documentation and isolated setup-script test.
 - Wired the server binary to generated environment configuration and TLS/SQLite paths.
 - Added release-binary deployment smoke test covering startup and TLS protocol negotiation.
-- Full workspace verification passed: 20 Rust tests plus setup-script, deployment-smoke, and doc/empty-crate checks.
+- Added eframe desktop client foundation with server address, TLS server name, trusted certificate, and secure connect workflow.
+- Added client TLS loopback integration tests against the TwoKitties server.
+- Linux workspace tests and client build passed; Windows cross-check is blocked by missing `x86_64-w64-mingw32-gcc` on this host.
+- Added desktop client documentation in `docs/CLIENT.md`.
 - Compiled outputs remain under `/home/tempest/Projects/twokitties/target/`.
 - Created public GitHub repository: `https://github.com/tempest-kitty/twokitties`.
 - Renamed the product from Lattice Chat to TwoKitties and attributed it to Kitty Dynamics.

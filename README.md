@@ -8,7 +8,7 @@ A cross-platform chat system planned as:
 - `twokitties-server`: Linux-hosted server for accounts, communities, message history, media, and federation.
 - `twokitties-protocol`: versioned shared protocol/domain types.
 
-Status: self-hosting setup milestone complete. The Linux server binary reads generated configuration, serves TLS, initializes SQLite, and can be installed with the tested setup script and systemd unit. Trusted certificate automation, persistent sessions, and public service hardening remain.
+Status: desktop client foundation complete. The Linux/Windows-oriented eframe client has a TLS connection screen and tested protocol negotiation against a TwoKitties server. Linux builds pass; Windows cross-compilation still needs a MinGW linker on this host.
 
 ## Build and test
 
@@ -24,8 +24,9 @@ Build outputs, including compiled binaries, stay under this project's `target/` 
 
 ## Self-hosting
 
-The tested Linux setup path is documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Run `cargo build --release -p twokitties-server`, then use `scripts/setup-server.sh --yes` to install the binary, initialize SQLite, generate initial TLS material, and create a systemd unit. The generated self-signed certificate is for initial testing only.
+The tested Linux setup path is documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Run `cargo build --release -p twokitties-server`, then use `scripts/setup-server.sh --yes` to install the binary, initialize SQLite, generate initial TLS material, and create a systemd unit. The desktop client workflow is documented in [`docs/CLIENT.md`](docs/CLIENT.md).
 
+The generated self-signed certificate is for initial testing only.
 ## Planned milestones
 
 1. Foundation and repository policy — workspace, CI-quality local checks, architecture decisions.

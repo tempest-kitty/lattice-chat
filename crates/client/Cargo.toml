@@ -5,7 +5,14 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+eframe = "0.30"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pemfile = "2"
 twokitties-protocol = { path = "../protocol" }
+
+[dev-dependencies]
+rcgen = "0.13"
+twokitties-server = { path = "../server" }
 
 [[bin]]
 name = "twokitties-client"

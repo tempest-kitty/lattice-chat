@@ -44,4 +44,4 @@ Initial storage choice: SQLite for the first deployable server, with a storage t
 
 ## Current status
 
-Self-hosting setup milestone complete. The Linux server binary reads generated environment configuration, initializes SQLite, serves TLS, and is installable through the tested setup script and systemd unit generation path. Trusted certificate automation, persistent sessions, and public service hardening remain.
+Desktop client foundation complete. The eframe client has a TLS connection screen and tested protocol negotiation against a TwoKitties server. Linux builds pass; Windows cross-compilation is blocked on this host by the missing MinGW linker. Full login UI, chat UI, and packaging remain.
