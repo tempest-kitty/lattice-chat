@@ -1,5 +1,7 @@
 # TwoKitties build log
 
+Produced by Kitty Dynamics.
+
 ## 2026-09-20
 
 ### Verified
@@ -31,15 +33,17 @@
 - Full workspace verification passed: 20 Rust tests plus setup-script, deployment-smoke, and doc/empty-crate checks.
 - Compiled outputs remain under `/home/tempest/Projects/twokitties/target/`.
 - Created public GitHub repository: `https://github.com/tempest-kitty/twokitties`.
+- Renamed the product from Lattice Chat to TwoKitties and attributed it to Kitty Dynamics.
+- Renamed Rust crates, binaries, setup paths, and deployment files to `twokitties-*` naming.
 - Configured `origin`, committed the foundation as `a359d46c4727`, pushed `main`, and verified the remote `main` commit through GitHub's API.
 
 - Configured persistent GitHub authentication through `/home/tempest/.local/bin/git-credential-github-secret`, backed by the Linux Secret Service keyring.
 - Verified the keyring entry exists and `git ls-remote origin HEAD` succeeds without an interactive prompt.
 
-### Not implemented yet
+### Remaining work
 
-Network transport, TLS, password hashing, persistent storage, chat history, E2EE, media, federation, desktop UI, packaging, and CI.
+Chat history, E2EE, media, federation, desktop UI, trusted certificate automation, persistent sessions, packaging, public service hardening, and CI remain.
 
 ### Security note
 
-The current account object deliberately does not retain the supplied password. Its verifier is a placeholder enum and must be replaced with Argon2id-based storage before any authentication endpoint is exposed.
+Passwords use Argon2id hashes. The generated setup certificate is self-signed for initial testing only and must be replaced before public deployment.

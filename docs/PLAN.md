@@ -1,5 +1,7 @@
 # TwoKitties plan
 
+Produced by Kitty Dynamics.
+
 ## Confirmed scope
 
 - New project root: `/home/tempest/Projects/twokitties/`.
