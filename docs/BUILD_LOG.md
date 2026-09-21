@@ -67,6 +67,15 @@ Chat history, E2EE, media, federation, desktop UI, trusted certificate automatio
 - Added an integration test covering one connection handling multiple authenticated commands.
 - Workspace verification passed: 26 tests; release build passed.
 
+### Desktop live chat connection milestone
+
+- Added a client `PersistentChatConnection` that authenticates once and reuses one TLS stream for multiple sends, history reads, and quit.
+- Added a background chat worker to the eframe client so network I/O does not block the UI thread.
+- Added two-second channel-history polling and UI-safe message/error events.
+- Logout now requests a clean persistent connection shutdown.
+- Added a RED-GREEN integration test covering two sends and history retrieval over one authenticated TLS connection.
+- Workspace verification passed: 27 tests; release workspace build passed.
+
 ### Security note
 
 Passwords use Argon2id hashes. The generated setup certificate is self-signed for initial testing only and must be replaced before public deployment.

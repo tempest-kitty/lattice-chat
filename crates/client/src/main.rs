@@ -1,10 +1,97 @@
 use eframe::egui;
 use std::fs;
 use std::net::SocketAddr;
-use twokitties_client::{
-    ChatMessage, connect_tls_and_authenticate, fetch_history_tls, register_tls_account,
-    send_message_tls,
-};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread;
+use std::time::Duration;
+use twokitties_client::{ChatMessage, PersistentChatConnection, register_tls_account};
+
+enum ChatCommand {
+    Refresh(String),
+    Send(String, String),
+    Stop,
+}
+
+enum ChatEvent {
+    Messages(Vec<ChatMessage>),
+    Sent(i64),
+    Error(String),
+    Disconnected,
+}
+
+struct ChatWorker {
+    commands: Sender<ChatCommand>,
+    events: Receiver<ChatEvent>,
+}
+
+impl ChatWorker {
+    fn start(mut connection: PersistentChatConnection, channel: String) -> Self {
+        let (commands, command_rx) = mpsc::channel();
+        let (event_tx, events) = mpsc::channel();
+        thread::spawn(move || {
+            let mut current_channel = channel;
+            if let Err(error) = Self::refresh(&mut connection, &current_channel, &event_tx) {
+                let _ = event_tx.send(ChatEvent::Error(error));
+            }
+            loop {
+                match command_rx.recv_timeout(Duration::from_secs(2)) {
+                    Ok(ChatCommand::Refresh(channel)) => {
+                        current_channel = channel;
+                        if let Err(error) =
+                            Self::refresh(&mut connection, &current_channel, &event_tx)
+                        {
+                            let _ = event_tx.send(ChatEvent::Error(error));
+                            break;
+                        }
+                    }
+                    Ok(ChatCommand::Send(channel, content)) => {
+                        match connection.send(&channel, &content) {
+                            Ok(id) => {
+                                let _ = event_tx.send(ChatEvent::Sent(id));
+                                if let Err(error) =
+                                    Self::refresh(&mut connection, &current_channel, &event_tx)
+                                {
+                                    let _ = event_tx.send(ChatEvent::Error(error));
+                                    break;
+                                }
+                            }
+                            Err(error) => {
+                                let _ = event_tx.send(ChatEvent::Error(error));
+                                break;
+                            }
+                        }
+                    }
+                    Ok(ChatCommand::Stop) => {
+                        let _ = connection.quit();
+                        break;
+                    }
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        if let Err(error) =
+                            Self::refresh(&mut connection, &current_channel, &event_tx)
+                        {
+                            let _ = event_tx.send(ChatEvent::Error(error));
+                            break;
+                        }
+                    }
+                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                }
+            }
+            let _ = event_tx.send(ChatEvent::Disconnected);
+        });
+        Self { commands, events }
+    }
+
+    fn refresh(
+        connection: &mut PersistentChatConnection,
+        channel: &str,
+        events: &Sender<ChatEvent>,
+    ) -> Result<(), String> {
+        let messages = connection.history(channel, 100)?;
+        events
+            .send(ChatEvent::Messages(messages))
+            .map_err(|_| "chat UI closed".to_owned())
+    }
+}
 
 struct TwoKittiesApp {
     server_address: String,
@@ -15,6 +102,7 @@ struct TwoKittiesApp {
     password: String,
     signup_mode: bool,
     session_token: Option<String>,
+    worker: Option<ChatWorker>,
     channel: String,
     messages: Vec<ChatMessage>,
     message_input: String,
@@ -32,6 +120,7 @@ impl Default for TwoKittiesApp {
             password: String::new(),
             signup_mode: false,
             session_token: None,
+            worker: None,
             channel: "general".to_owned(),
             messages: Vec::new(),
             message_input: String::new(),
@@ -57,17 +146,17 @@ impl TwoKittiesApp {
             self.status = self.connection_details().unwrap_err();
             return;
         };
-        match connect_tls_and_authenticate(
+        match PersistentChatConnection::connect_and_authenticate(
             address,
             self.server_name.trim(),
             &certificate,
             self.username.trim(),
             &self.password,
         ) {
-            Ok(session) => {
-                self.session_token = Some(session);
+            Ok(connection) => {
+                self.session_token = Some("persistent".to_owned());
+                self.worker = Some(ChatWorker::start(connection, self.channel.clone()));
                 self.status = format!("Authenticated as {}", self.username.trim());
-                self.refresh_history();
             }
             Err(error) => {
                 self.session_token = None;
@@ -100,54 +189,60 @@ impl TwoKittiesApp {
     }
 
     fn refresh_history(&mut self) {
-        let Some(token) = self.session_token.as_deref() else {
+        let Some(worker) = self.worker.as_ref() else {
             return;
         };
-        let Ok((address, certificate)) = self.connection_details() else {
-            self.status = self.connection_details().unwrap_err();
-            return;
-        };
-        match fetch_history_tls(
-            address,
-            self.server_name.trim(),
-            &certificate,
-            token,
-            self.channel.trim(),
-            100,
-        ) {
-            Ok(messages) => {
-                self.messages = messages;
-                self.status = format!("Loaded {} messages", self.messages.len());
-            }
-            Err(error) => self.status = format!("History failed: {error}"),
+        if let Err(error) = worker
+            .commands
+            .send(ChatCommand::Refresh(self.channel.trim().to_owned()))
+        {
+            self.status = format!("Refresh failed: {error}");
         }
     }
 
     fn send_message(&mut self) {
-        let Some(token) = self.session_token.as_deref() else {
-            return;
-        };
         if self.message_input.trim().is_empty() {
             self.status = "Message cannot be empty".to_owned();
             return;
         }
-        let Ok((address, certificate)) = self.connection_details() else {
-            self.status = self.connection_details().unwrap_err();
+        let Some(worker) = self.worker.as_ref() else {
             return;
         };
-        match send_message_tls(
-            address,
-            self.server_name.trim(),
-            &certificate,
-            token,
-            self.channel.trim(),
-            &self.message_input,
-        ) {
-            Ok(_) => {
-                self.message_input.clear();
-                self.refresh_history();
+        if let Err(error) = worker.commands.send(ChatCommand::Send(
+            self.channel.trim().to_owned(),
+            self.message_input.clone(),
+        )) {
+            self.status = format!("Send failed: {error}");
+        } else {
+            self.message_input.clear();
+            self.status = "Sending message".to_owned();
+        }
+    }
+
+    fn poll_chat_events(&mut self) {
+        let mut disconnected = false;
+        if let Some(worker) = self.worker.as_ref() {
+            while let Ok(event) = worker.events.try_recv() {
+                match event {
+                    ChatEvent::Messages(messages) => {
+                        self.messages = messages;
+                        self.status = format!("Loaded {} messages", self.messages.len());
+                    }
+                    ChatEvent::Sent(id) => {
+                        self.status = format!("Message {id} sent");
+                    }
+                    ChatEvent::Error(error) => {
+                        self.status = format!("Chat connection failed: {error}");
+                        disconnected = true;
+                    }
+                    ChatEvent::Disconnected => disconnected = true,
+                }
             }
-            Err(error) => self.status = format!("Send failed: {error}"),
+        }
+        if disconnected {
+            self.worker = None;
+            self.session_token = None;
+            self.status = "Chat connection closed".to_owned();
         }
     }
 
@@ -177,6 +272,9 @@ impl TwoKittiesApp {
             }
         });
         if ui.button("Log out").clicked() {
+            if let Some(worker) = self.worker.take() {
+                let _ = worker.commands.send(ChatCommand::Stop);
+            }
             self.session_token = None;
             self.messages.clear();
             self.status = "Logged out".to_owned();
@@ -186,6 +284,8 @@ impl TwoKittiesApp {
 
 impl eframe::App for TwoKittiesApp {
     fn update(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
+        self.poll_chat_events();
+        context.request_repaint_after(Duration::from_millis(100));
         egui::CentralPanel::default().show(context, |ui| {
             ui.heading("TwoKitties");
             ui.label("Kitty Dynamics");

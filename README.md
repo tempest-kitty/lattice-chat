@@ -8,7 +8,7 @@ A cross-platform chat system planned as:
 - `twokitties-server`: Linux-hosted server for accounts, communities, message history, media, and federation.
 - `twokitties-protocol`: versioned shared protocol/domain types.
 
-Status: desktop client foundation complete. The Linux/Windows-oriented eframe client has a TLS connection screen and tested protocol negotiation against a TwoKitties server. Linux builds pass; Windows cross-compilation still needs a MinGW linker on this host.
+Status: desktop chat client live-update slice complete. After TLS login, the client owns one authenticated connection on a background worker, sends chat commands without blocking the UI, and polls channel history every two seconds for updates. Linux builds pass; Windows cross-compilation still needs a MinGW linker on this host.
 
 ## Build and test
 

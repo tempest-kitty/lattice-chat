@@ -12,7 +12,7 @@ The desktop client uses Rust/eframe and is intended to build on Linux and Window
 - Secure connect action
 - Protocol connection status
 
-The client establishes TLS, trusts the configured certificate, negotiates protocol version 1, and reports the server response.
+The client establishes TLS, trusts the configured certificate, negotiates protocol version 1, and reports the server response. After login, chat uses one authenticated TLS connection owned by a background worker. Send and refresh commands are asynchronous from the UI thread, and channel history is polled every two seconds for updates.
 
 ## Linux test
 
